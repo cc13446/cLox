@@ -11,24 +11,30 @@ void initChunk(Chunk *chunk) {
     chunk->capacity = 0;
     chunk->size = 0;
     chunk->code = NULL;
+    initValueArray(&chunk->constants);
 }
 
 void freeChunk(Chunk  *chunk) {
-    dbg("Free Chunk %s", chunk->code)
+    dbg("Free Chunk")
     dbgChunk(chunk, "Chunk Free")
     FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
+    freeValueArray(&chunk->constants);
     initChunk(chunk);
 }
 
 void writeChunk(Chunk *chunk, uint8_t byte) {
-    dbg("Write Chunk %hhu to", byte)
-    dbgChunk(chunk, "Chunk Write")
     if (chunk->capacity < chunk->size + 1) {
         int oldCapacity = chunk->capacity;
         chunk->capacity = GROW_CAPACITY(oldCapacity);
         chunk->code = GROW_ARRAY(uint8_t, chunk->code, oldCapacity, chunk->capacity);
     }
-
     chunk->code[chunk->size] = byte;
     chunk->size++;
+    dbg("Write [%hhu] To Chunk ", byte)
+}
+
+int addConstant(Chunk* chunk, Value value) {
+    writeValueArray(&chunk->constants, value);
+    dbg("Add Value [%g] To Chunk INDEX [%d]", value, chunk->constants.size - 1)
+    return chunk->constants.size - 1;
 }

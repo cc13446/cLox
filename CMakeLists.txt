@@ -14,4 +14,5 @@ add_executable(cLox
         memory.c
         debug.h
         debug.c
+        value.c
 )

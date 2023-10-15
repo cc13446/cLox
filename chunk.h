@@ -7,11 +7,13 @@
 
 #include "common.h"
 #include "memory.h"
+#include "value.h"
 
 /**
  * 字节码
  */
 typedef enum {
+    OP_CONSTANT,
     OP_RETURN
 } OpCode;
 
@@ -22,6 +24,7 @@ typedef struct {
     int size;
     int capacity;
     uint8_t *code;
+    ValueArray constants;
 } Chunk;
 
 /**
@@ -42,5 +45,13 @@ void freeChunk(Chunk* chunk);
  * @param byte
  */
 void writeChunk(Chunk *chunk, uint8_t byte);
+
+/**
+ * 添加常量
+ * @param chunk
+ * @param value
+ * @return
+ */
+int addConstant(Chunk* chunk, Value value);
 
 #endif //CLOX_CHUNK_H

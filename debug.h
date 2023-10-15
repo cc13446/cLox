@@ -22,7 +22,7 @@
 
 #ifdef debug
 #define dbgChunk(chunk, name) \
-    disassembleChunk(chunk, "test chunk");
+    disassembleChunk(chunk, name);
 #else
 #define dbgChunk(chunk, name)
 #endif
