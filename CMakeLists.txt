@@ -12,5 +12,6 @@ add_executable(cLox
         chunk.c
         memory.h
         memory.c
-        dbg.h
+        debug.h
+        debug.c
 )

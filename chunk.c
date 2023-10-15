@@ -4,7 +4,7 @@
 
 #include <stdlib.h>
 #include "chunk.h"
-#include "dbg.h"
+#include "debug.h"
 
 void initChunk(Chunk *chunk) {
     dbg("Init Chunk")
@@ -15,12 +15,14 @@ void initChunk(Chunk *chunk) {
 
 void freeChunk(Chunk  *chunk) {
     dbg("Free Chunk %s", chunk->code)
+    dbgChunk(chunk, "Chunk Free")
     FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
     initChunk(chunk);
 }
 
 void writeChunk(Chunk *chunk, uint8_t byte) {
-    dbg("Write Chunk %hhu to %s", byte, chunk->code)
+    dbg("Write Chunk %hhu to", byte)
+    dbgChunk(chunk, "Chunk Write")
     if (chunk->capacity < chunk->size + 1) {
         int oldCapacity = chunk->capacity;
         chunk->capacity = GROW_CAPACITY(oldCapacity);
@@ -30,5 +32,3 @@ void writeChunk(Chunk *chunk, uint8_t byte) {
     chunk->code[chunk->size] = byte;
     chunk->size++;
 }
-
-
