@@ -24,6 +24,7 @@ typedef struct {
     int size;
     int capacity;
     uint8_t *code;
+    int* lines;
     ValueArray constants;
 } Chunk;
 
@@ -44,7 +45,7 @@ void freeChunk(Chunk* chunk);
  * @param chunk
  * @param byte
  */
-void writeChunk(Chunk *chunk, uint8_t byte);
+void writeChunk(Chunk *chunk, uint8_t byte, int line);
 
 /**
  * 添加常量
