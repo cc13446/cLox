@@ -34,6 +34,19 @@
 #define dbgInstruction(chunk, offset)
 #endif
 
+#ifdef debug
+#define dbgStack(vm) \
+    printf("STACK     ");                                       \
+    for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {  \
+        printf("[ ");                                           \
+        printValue(*slot);                                      \
+        printf(" ]");                                           \
+    }                                                           \
+    printf("\n");
+#else
+#define dbgStack(vm)
+#endif
+
 /**
  * 反汇编 chunk
  * @param chunk

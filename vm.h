@@ -5,14 +5,19 @@
 #ifndef CLOX_VM_H
 #define CLOX_VM_H
 
+#define STACK_MAX 256
+
 #include "chunk.h"
+#include "value.h"
 
 /**
  * 虚拟机
  */
 typedef struct {
-    Chunk* chunk;
-    uint8_t* ip; // 记录字节码的位置
+    Chunk *chunk;
+    uint8_t *ip; // 记录字节码的位置
+    Value stack[STACK_MAX]; // 虚拟机栈
+    Value *stackTop; // 虚拟机栈顶
 } VM;
 
 /**
@@ -39,6 +44,18 @@ void freeVM();
  * @param chunk
  * @return
  */
-InterpretResult interpret(Chunk* chunk);
+InterpretResult interpret(Chunk *chunk);
+
+/**
+ * 入栈
+ * @param value
+ */
+void push(Value value);
+
+/**
+ * 栈顶元素出栈
+ * @return
+ */
+Value pop();
 
 #endif //CLOX_VM_H

@@ -2,7 +2,6 @@
 // Created by chen chen on 2023/10/15.
 //
 
-#include <stdlib.h>
 #include "chunk.h"
 #include "debug.h"
 

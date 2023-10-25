@@ -13,9 +13,20 @@ int main(int argc, char* argv[]) {
     int constant = addConstant(&chunk, 1.2);
     writeChunk(&chunk, OP_CONSTANT, 1);
     writeChunk(&chunk, constant, 1);
-    dbgChunk(&chunk, "Add Constant")
+
+    constant = addConstant(&chunk, 3.4);
+    writeChunk(&chunk, OP_CONSTANT, 1);
+    writeChunk(&chunk, constant, 1);
+
+    writeChunk(&chunk, OP_ADD, 1);
+
+    constant = addConstant(&chunk, 5.6);
+    writeChunk(&chunk, OP_CONSTANT, 1);
+    writeChunk(&chunk, constant, 1);
+
+    writeChunk(&chunk, OP_DIVIDE, 1);
+    writeChunk(&chunk, OP_NEGATE, 1);
     writeChunk(&chunk, OP_RETURN, 1);
-    dbgChunk(&chunk, "Add Return")
     interpret(&chunk);
     freeVM();
     freeChunk(&chunk);
