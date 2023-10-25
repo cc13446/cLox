@@ -44,7 +44,7 @@ void freeVM();
  * @param chunk
  * @return
  */
-InterpretResult interpret(Chunk *chunk);
+InterpretResult interpret(const char* source);
 
 /**
  * 入栈

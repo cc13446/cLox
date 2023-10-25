@@ -16,4 +16,8 @@ add_executable(cLox
         debug.c
         value.c
         vm.c
+        compiler.c
+        compiler.h
+        scanner.c
+        scanner.h
 )

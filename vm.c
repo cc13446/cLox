@@ -5,6 +5,7 @@
 
 #include "vm.h"
 #include "debug.h"
+#include "compiler.h"
 
 /**
  * 单例
@@ -86,13 +87,11 @@ void initVM() {
 void freeVM() {
 }
 
-InterpretResult interpret(Chunk *chunk) {
-    dbg("Start Run")
-    vm.chunk = chunk;
-    vm.ip = vm.chunk->code;
-    InterpretResult result = run();
-    dbg("End Run")
-    return result;
+InterpretResult interpret(const char* source) {
+    dbg("Start Compile")
+    compile(source);
+    dbg("End Compile")
+    return INTERPRET_OK;
 }
 
 void push(Value value) {
