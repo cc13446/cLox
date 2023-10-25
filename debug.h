@@ -27,6 +27,13 @@
 #define dbgChunk(chunk, name)
 #endif
 
+#ifdef debug
+#define dbgInstruction(chunk, offset) \
+    disassembleInstruction(chunk, offset);
+#else
+#define dbgInstruction(chunk, offset)
+#endif
+
 /**
  * 反汇编 chunk
  * @param chunk

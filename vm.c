@@ -28,6 +28,7 @@ static InterpretResult run() {
 // 读取常量
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
     for (;;) {
+        dbgInstruction(vm.chunk, (int) (vm.ip - vm.chunk->code))
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
             case OP_RETURN: {
@@ -45,7 +46,7 @@ static InterpretResult run() {
 #undef READ_CONSTANT
 }
 
-InterpretResult interpret(Chunk* chunk) {
+InterpretResult interpret(Chunk *chunk) {
     dbg("Start Run")
     vm.chunk = chunk;
     vm.ip = vm.chunk->code;
