@@ -6,20 +6,22 @@ set(CMAKE_C_STANDARD 11)
 include_directories(.)
 
 add_executable(cLox
-        common.h
-        main.c
         chunk.h
         chunk.c
-        memory.h
-        memory.c
+        common.h
+        compiler.h
+        compiler.c
         debug.h
         debug.c
-        value.c
-        vm.c
-        compiler.c
-        compiler.h
-        scanner.c
+        main.c
+        memory.h
+        memory.c
         scanner.h
-        trie.c
+        scanner.c
         trie.h
+        trie.c
+        value.h
+        value.c
+        vm.h
+        vm.c
 )
