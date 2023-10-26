@@ -88,10 +88,24 @@ void freeVM() {
 }
 
 InterpretResult interpret(const char* source) {
+    Chunk chunk;
+    initChunk(&chunk);
+
     dbg("Start Compile")
-    compile(source);
-    dbg("End Compile")
-    return INTERPRET_OK;
+    if (!compile(source, &chunk)) {
+        freeChunk(&chunk);
+        return INTERPRET_COMPILE_ERROR;
+    }
+    dbg("Success Compile")
+    vm.chunk = &chunk;
+    vm.ip = vm.chunk->code;
+
+    dbg("Start Run")
+    InterpretResult result = run();
+    dbg("End Run")
+
+    freeChunk(&chunk);
+    return result;
 }
 
 void push(Value value) {
