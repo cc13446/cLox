@@ -10,6 +10,7 @@
 #include "chunk.h"
 #include "debug.h"
 #include "vm.h"
+#include "trie.h"
 
 /**
  * 交互执行
@@ -74,6 +75,7 @@ static void run(const char *path) {
 }
 
 int main(int argc, char *argv[]) {
+    initKeyWordTrie();
     initVM();
     if (argc == 1) {
         repl();
@@ -84,5 +86,6 @@ int main(int argc, char *argv[]) {
         exit(64);
     }
     freeVM();
+    freeTrie();
     return 0;
 }

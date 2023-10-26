@@ -20,4 +20,6 @@ add_executable(cLox
         compiler.h
         scanner.c
         scanner.h
+        trie.c
+        trie.h
 )

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "trie.h"
 #include "common.h"
 #include "scanner.h"
 
@@ -123,6 +124,77 @@ static void skipWhitespace() {
     }
 }
 
+/**
+ * 字符串Token
+ */
+static Token string() {
+    while (peekCurrentChar() != '"' && !isAtEnd()) {
+        if (peekCurrentChar() == '\n') {
+            scanner.line++;
+        }
+        getCurrentCharAndNext();
+    }
+
+    if (isAtEnd()) {
+        return makeErrorToken("Unterminated string.");
+    }
+
+    // The closing quote.
+    getCurrentCharAndNext();
+    return makeToken(TOKEN_STRING);
+}
+
+static bool isDigit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+/**
+ * 数字Token
+ */
+static Token number() {
+    while (isDigit(peekCurrentChar())) {
+        getCurrentCharAndNext();
+    }
+
+    // Look for a fractional part.
+    if (peekCurrentChar() == '.' && isDigit(peekNextChar())) {
+        // Consume the ".".
+        getCurrentCharAndNext();
+
+        while (isDigit(peekCurrentChar())) {
+            getCurrentCharAndNext();
+        }
+    }
+
+    return makeToken(TOKEN_NUMBER);
+}
+
+static bool isAlpha(char c) {
+    return (c >= 'a' && c <= 'z') ||
+           (c >= 'A' && c <= 'Z') ||
+           c == '_';
+}
+
+static TokenType identifierType() {
+
+    TokenType result = matchTokenWord(scanner.start, scanner.current - scanner.start);
+    if (result == TOKEN_ERROR) {
+        return TOKEN_IDENTIFIER;
+    }
+    return result;
+}
+
+/**
+ * 生成变量Token
+ * @return
+ */
+static Token identifier() {
+    while (isAlpha(peekCurrentChar()) || isDigit(peekCurrentChar())) {
+        getCurrentCharAndNext();
+    }
+    return makeToken(identifierType());
+}
+
 void initScanner(const char *source) {
     scanner.start = source;
     scanner.current = source;
@@ -138,7 +210,12 @@ Token scanToken() {
     }
 
     char c = getCurrentCharAndNext();
-
+    if (isAlpha(c)) {
+        return identifier();
+    }
+    if (isDigit(c)) {
+        return number();
+    }
     switch (c) {
         case '(':
             return makeToken(TOKEN_LEFT_PAREN);
@@ -170,6 +247,8 @@ Token scanToken() {
             return makeToken(matchCurrentCharAndNext('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
         case '>':
             return makeToken(matchCurrentCharAndNext('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
+        case '"':
+            return string();
     }
 
     return makeErrorToken("Unexpected character.");
