@@ -4,9 +4,11 @@
 
 #include "chunk.h"
 #include "debug.h"
+#include "memory.h"
+
 
 void initChunk(Chunk *chunk) {
-    dbg("Init Chunk")
+    dbg("Init Chunk");
     chunk->capacity = 0;
     chunk->size = 0;
     chunk->code = NULL;
@@ -15,8 +17,8 @@ void initChunk(Chunk *chunk) {
 }
 
 void freeChunk(Chunk  *chunk) {
-    dbg("Free Chunk")
-    dbgChunk(chunk, "Chunk Free")
+    dbg("Free Chunk");
+    dbgChunk(chunk, "Chunk Free");
     FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
     FREE_ARRAY(int, chunk->lines, chunk->capacity);
     freeValueArray(&chunk->constants);
@@ -33,11 +35,11 @@ void writeChunk(Chunk *chunk, uint8_t byte, int line) {
     chunk->code[chunk->size] = byte;
     chunk->lines[chunk->size] = line;
     chunk->size++;
-    dbg("Write [%hhu] To Chunk Line [%d]", byte, line)
+    dbg("Write [%hhu] To Chunk Line [%d]", byte, line);
 }
 
 int addConstant(Chunk* chunk, Value value) {
     writeValueArray(&chunk->constants, value);
-    dbg("Add Value [%g] To Chunk INDEX [%d]", AS_NUMBER(value), chunk->constants.size - 1)
+    dbgValue(value, "Add Value To Chunk INDEX [%d], Value : ", chunk->constants.size - 1);
     return chunk->constants.size - 1;
 }

@@ -6,7 +6,6 @@
 #define CLOX_CHUNK_H
 
 #include "common.h"
-#include "memory.h"
 #include "value.h"
 
 /**

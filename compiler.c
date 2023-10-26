@@ -9,6 +9,7 @@
 #include "compiler.h"
 #include "scanner.h"
 #include "debug.h"
+#include "object.h"
 
 Parser parser;
 Chunk *compilingChunk;
@@ -147,7 +148,7 @@ static void emitConstant(Value value) {
  */
 static void endCompiler() {
     emitReturn();
-    dbgChunk(currentChunk(), "code")
+    dbgChunk(currentChunk(), "code");
 }
 
 // ========================== 中间代码 ==========================
@@ -156,6 +157,11 @@ static void endCompiler() {
  * 数字
  */
 static void number();
+
+/**
+ * 字符串
+ */
+static void string();
 
 /**
  * 一元表达式
@@ -203,7 +209,7 @@ ParseRule rules[] = {
         [TOKEN_LESS]          = {NULL, binary, PRECEDENCE_COMPARISON},
         [TOKEN_LESS_EQUAL]    = {NULL, binary, PRECEDENCE_COMPARISON},
         [TOKEN_IDENTIFIER]    = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_STRING]        = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_STRING]        = {string, NULL, PRECEDENCE_NONE},
         [TOKEN_NUMBER]        = {number, NULL, PRECEDENCE_NONE},
         [TOKEN_AND]           = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_CLASS]         = {NULL, NULL, PRECEDENCE_NONE},
@@ -261,6 +267,10 @@ static void parsePrecedence(Precedence precedence) {
 static void number() {
     double value = strtod(parser.previous.start, NULL);
     emitConstant(NUMBER_VAL(value));
+}
+
+static void string() {
+    emitConstant(OBJECT_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
 }
 
 static void unary() {

@@ -12,39 +12,59 @@
 #define debug
 
 #ifdef debug
-#define dbg(format, ...)                                                            \
+#define dbg(format, ...) \
+do {                                                                                \
     printf("%s %s FILE [%s] LINE [%d] : ", __DATE__, __TIME__, __FILE__, __LINE__); \
     printf(format, ##__VA_ARGS__);                                                  \
-    printf("\r\n");
+    printf("\r\n");                                                                 \
+} while(false)
 #else
 #define dbg(format, ...)
 #endif
 
 #ifdef debug
 #define dbgChunk(chunk, name) \
-    disassembleChunk(chunk, name);
+do {                                \
+    disassembleChunk(chunk, name);  \
+} while(false)
 #else
 #define dbgChunk(chunk, name)
 #endif
 
 #ifdef debug
 #define dbgInstruction(chunk, offset) \
-    disassembleInstruction(chunk, offset);
+do {                                        \
+    disassembleInstruction(chunk, offset);  \
+} while(false)
 #else
 #define dbgInstruction(chunk, offset)
 #endif
 
 #ifdef debug
 #define dbgStack(vm) \
+do {                                                            \
     printf("STACK     ");                                       \
     for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {  \
         printf("[ ");                                           \
         printValue(*slot);                                      \
         printf(" ]");                                           \
     }                                                           \
-    printf("\n");
+    printf("\n");                                               \
+} while(false)
 #else
 #define dbgStack(vm)
+#endif
+
+#ifdef debug
+#define dbgValue(value, format, ...) \
+do {                                                                                \
+    printf("%s %s FILE [%s] LINE [%d] : ", __DATE__, __TIME__, __FILE__, __LINE__); \
+    printf(format, ##__VA_ARGS__);                                                  \
+    printValue(value);                                                              \
+    printf("\r\n");                                                                 \
+} while(false)
+#else
+#define dbgValue(value, format, ...)
 #endif
 
 /**
@@ -52,7 +72,7 @@
  * @param chunk
  * @param name
  */
-void disassembleChunk(Chunk* chunk, const char* name);
+void disassembleChunk(Chunk *chunk, const char *name);
 
 /**
  * 反汇编 指令
@@ -60,6 +80,6 @@ void disassembleChunk(Chunk* chunk, const char* name);
  * @param offset
  * @return
  */
-int disassembleInstruction(Chunk* chunk, int offset);
+int disassembleInstruction(Chunk *chunk, int offset);
 
 #endif //CLOX_DEBUG_H

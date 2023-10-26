@@ -3,10 +3,13 @@
 //
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "vm.h"
 #include "debug.h"
 #include "compiler.h"
+#include "object.h"
+#include "memory.h"
 
 /**
  * 单例
@@ -36,8 +39,30 @@ static void runtimeError(const char *format, ...) {
     resetStack();
 }
 
+/**
+ * 判断是否为 False
+ * @param value
+ * @return
+ */
 static bool isFalse(Value value) {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+
+/**
+ * 合并字符串
+ */
+static void concatString() {
+    ObjectString *b = AS_STRING(pop());
+    ObjectString *a = AS_STRING(pop());
+
+    int length = a->length + b->length;
+    char *chars = ALLOCATE(char, length + 1);
+    memcpy(chars, a->chars, a->length);
+    memcpy(chars + a->length, b->chars, b->length);
+    chars[length] = '\0';
+
+    ObjectString *result = takeString(chars, length);
+    push(OBJECT_VAL(result));
 }
 
 /**
@@ -63,8 +88,8 @@ static InterpretResult run() {
     } while (false)
 
     for (;;) {
-        dbgStack(vm)
-        dbgInstruction(vm.chunk, (int) (vm.ip - vm.chunk->code))
+        dbgStack(vm);
+        dbgInstruction(vm.chunk, (int) (vm.ip - vm.chunk->code));
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
             case OP_RETURN: {
@@ -107,7 +132,16 @@ static InterpretResult run() {
                 break;
             }
             case OP_ADD: {
-                BINARY_OP(NUMBER_VAL, +);
+                if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
+                    concatString();
+                } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                    double b = AS_NUMBER(pop());
+                    double a = AS_NUMBER(pop());
+                    push(NUMBER_VAL(a + b));
+                } else {
+                    runtimeError("Operands must be two numbers or two strings.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
                 break;
             }
             case OP_SUBTRACT: {
@@ -140,29 +174,58 @@ static InterpretResult run() {
 #undef BINARY_OP
 }
 
+/**
+ * 释放对象
+ */
+static void freeObject(Object *object) {
+    switch (object->type) {
+        case OBJECT_STRING: {
+            ObjectString *string = (ObjectString *) object;
+            dbg("Free Memory of Object String %s", string->chars);
+            FREE_ARRAY(char, string->chars, string->length + 1);
+            FREE(ObjectString, object);
+            break;
+        }
+    }
+}
+
+/**
+ * 释放所有对象
+ */
+static void freeObjects() {
+    Object *object = vm.objects;
+    while (object != NULL) {
+        Object *next = object->next;
+        freeObject(object);
+        object = next;
+    }
+}
+
 void initVM() {
     resetStack();
+    vm.objects = NULL;
 }
 
 void freeVM() {
+    freeObjects();
 }
 
 InterpretResult interpret(const char *source) {
     Chunk chunk;
     initChunk(&chunk);
 
-    dbg("Start Compile")
+    dbg("Start Compile");
     if (!compile(source, &chunk)) {
         freeChunk(&chunk);
         return INTERPRET_COMPILE_ERROR;
     }
-    dbg("Success Compile")
+    dbg("Success Compile");
     vm.chunk = &chunk;
     vm.ip = vm.chunk->code;
 
-    dbg("Start Run")
+    dbg("Start Run");
     InterpretResult result = run();
-    dbg("End Run")
+    dbg("End Run");
 
     freeChunk(&chunk);
     return result;
@@ -180,5 +243,10 @@ Value pop() {
 
 Value peek(int distance) {
     return vm.stackTop[-1 - distance];
+}
+
+void addObject(Object *object) {
+    object->next = vm.objects;
+    vm.objects = object;
 }
 

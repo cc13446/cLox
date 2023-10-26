@@ -14,7 +14,7 @@ void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
     }
     void* result = realloc(pointer, newSize);
     if (result == NULL) {
-        dbg("Error when realloc new array")
+        dbg("Error when realloc new array");
         exit(1);
     }
     return result;

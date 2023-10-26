@@ -6,6 +6,7 @@
 
 #include "trie.h"
 #include "common.h"
+#include "memory.h"
 
 #define TRIE_MAX_LENGTH 26
 
@@ -37,7 +38,7 @@ void addKeyWord(const char *word, TokenType type) {
     Trie *t = &trie;
     while (*cur != '\0') {
         if (t->node == NULL) {
-            t->node = (Trie *) malloc(sizeof(Trie) * TRIE_MAX_LENGTH);
+            t->node = ALLOCATE(Trie, TRIE_MAX_LENGTH);
             Trie *n = t->node;
             for (int i = 0; i < TRIE_MAX_LENGTH; i++, n++) {
                 n->node = NULL;
@@ -79,7 +80,7 @@ static void doFreeTrie(Trie *t) {
     for (int i = 0; i < TRIE_MAX_LENGTH; i++, node++) {
         doFreeTrie(node);
     }
-    free(t->node);
+    FREE_ARRAY(Trie, t->node, TRIE_MAX_LENGTH);
 }
 
 void freeTrie() {

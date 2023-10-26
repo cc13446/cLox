@@ -2,8 +2,10 @@
 // Created by chen chen on 2023/10/15.
 //
 #include <stdio.h>
+#include <string.h>
 
 #include "memory.h"
+#include "object.h"
 #include "value.h"
 
 void initValueArray(ValueArray *array) {
@@ -39,6 +41,9 @@ void printValue(Value value) {
         case VAL_NUMBER:
             printf("%g", AS_NUMBER(value));
             break;
+        case VAL_OBJECT:
+            printObject(value);
+            break;
     }
 }
 
@@ -51,6 +56,11 @@ bool valuesEqual(Value a, Value b) {
             return true;
         case VAL_NUMBER:
             return AS_NUMBER(a) == AS_NUMBER(b);
+        case VAL_OBJECT: {
+            ObjectString *aString = AS_STRING(a);
+            ObjectString *bString = AS_STRING(b);
+            return aString->length == bString->length && memcmp(aString->chars, bString->chars, aString->length) == 0;
+        }
         default:
             return false; // Unreachable.
     }

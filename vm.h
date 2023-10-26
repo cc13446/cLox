@@ -15,9 +15,10 @@
  */
 typedef struct {
     Chunk *chunk;
-    uint8_t *ip; // 记录字节码的位置
+    uint8_t *ip;            // 记录字节码的位置
     Value stack[STACK_MAX]; // 虚拟机栈
-    Value *stackTop; // 虚拟机栈顶
+    Value *stackTop;        // 虚拟机栈顶
+    Object * objects;       // 所有对象的链表
 } VM;
 
 /**
@@ -64,5 +65,11 @@ Value pop();
  * @return
  */
 Value peek(int distance);
+
+/**
+ * 添加一个堆对象，用于内存释放
+ * @param object
+ */
+void addObject(Object* object);
 
 #endif //CLOX_VM_H

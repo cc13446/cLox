@@ -24,4 +24,6 @@ add_executable(cLox
         value.c
         vm.h
         vm.c
+        object.c
+        object.h
 )
