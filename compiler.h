@@ -19,7 +19,7 @@ typedef struct {
 } Parser;
 
 /**
- * 运算符优先级处理
+ * 中缀运算符优先级处理
  */
 typedef enum {
     PRECEDENCE_NONE,

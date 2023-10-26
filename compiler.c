@@ -245,7 +245,7 @@ static void parsePrecedence(Precedence precedence) {
     // 解析前缀（可能会消耗更多的标识）
     prefixRule();
 
-    // 下一个操作符的优先级更高的时候继续解析中缀
+    // 下一个操作符的优先级大于等于自己的时候继续解析中缀
     while (precedence <= getRule(parser.current.type)->precedence) {
         next();
         ParseFn infixRule = getRule(parser.previous.type)->infix;
@@ -277,7 +277,7 @@ static void unary() {
 static void binary() {
     TokenType operatorType = parser.previous.type;
     ParseRule *rule = getRule(operatorType);
-    // 每个二元运算符的右操作数都比自己多一级
+    // 只有右操作数都比自己多一级的时候才优先计算右操作数
     parsePrecedence((Precedence) (rule->precedence + 1));
 
     switch (operatorType) {
