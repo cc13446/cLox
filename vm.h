@@ -58,4 +58,11 @@ void push(Value value);
  */
 Value pop();
 
+/**
+ * 栈顶元素
+ * @param distance
+ * @return
+ */
+Value peek(int distance);
+
 #endif //CLOX_VM_H

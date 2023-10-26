@@ -177,6 +177,11 @@ static void expression();
  */
 static void grouping();
 
+/**
+ * 保留字表达式
+ */
+static void literal();
+
 ParseRule rules[] = {
         [TOKEN_LEFT_PAREN]    = {grouping, NULL, PRECEDENCE_NONE},
         [TOKEN_RIGHT_PAREN]   = {NULL, NULL, PRECEDENCE_NONE},
@@ -189,31 +194,31 @@ ParseRule rules[] = {
         [TOKEN_SEMICOLON]     = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_SLASH]         = {NULL, binary, PRECEDENCE_FACTOR},
         [TOKEN_STAR]          = {NULL, binary, PRECEDENCE_FACTOR},
-        [TOKEN_BANG]          = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_BANG_EQUAL]    = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_BANG]          = {unary, NULL, PRECEDENCE_NONE},
+        [TOKEN_BANG_EQUAL]    =  {NULL, binary, PRECEDENCE_EQUALITY},
         [TOKEN_EQUAL]         = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_EQUAL_EQUAL]   = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_GREATER]       = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_GREATER_EQUAL] = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_LESS]          = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_LESS_EQUAL]    = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_EQUAL_EQUAL]   = {NULL, binary, PRECEDENCE_EQUALITY},
+        [TOKEN_GREATER]       = {NULL, binary, PRECEDENCE_COMPARISON},
+        [TOKEN_GREATER_EQUAL] = {NULL, binary, PRECEDENCE_COMPARISON},
+        [TOKEN_LESS]          = {NULL, binary, PRECEDENCE_COMPARISON},
+        [TOKEN_LESS_EQUAL]    = {NULL, binary, PRECEDENCE_COMPARISON},
         [TOKEN_IDENTIFIER]    = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_STRING]        = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_NUMBER]        = {number, NULL, PRECEDENCE_NONE},
         [TOKEN_AND]           = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_CLASS]         = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_ELSE]          = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_FALSE]         = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_FALSE]         = {literal, NULL, PRECEDENCE_NONE},
         [TOKEN_FOR]           = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_FUN]           = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_IF]            = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_NIL]           = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_NIL]           = {literal, NULL, PRECEDENCE_NONE},
         [TOKEN_OR]            = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_PRINT]         = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_RETURN]        = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_SUPER]         = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_THIS]          = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_TRUE]          = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_TRUE]          = {literal, NULL, PRECEDENCE_NONE},
         [TOKEN_VAR]           = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_WHILE]         = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_ERROR]         = {NULL, NULL, PRECEDENCE_NONE},
@@ -255,7 +260,7 @@ static void parsePrecedence(Precedence precedence) {
 
 static void number() {
     double value = strtod(parser.previous.start, NULL);
-    emitConstant(value);
+    emitConstant(NUMBER_VAL(value));
 }
 
 static void unary() {
@@ -268,6 +273,9 @@ static void unary() {
     switch (operatorType) {
         case TOKEN_MINUS:
             emitByte(OP_NEGATE);
+            break;
+        case TOKEN_BANG:
+            emitByte(OP_NOT);
             break;
         default:
             return; // Unreachable.
@@ -293,6 +301,24 @@ static void binary() {
         case TOKEN_SLASH:
             emitByte(OP_DIVIDE);
             break;
+        case TOKEN_BANG_EQUAL:
+            emitByte(OP_NOT_EQUAL);
+            break;
+        case TOKEN_EQUAL_EQUAL:
+            emitByte(OP_EQUAL);
+            break;
+        case TOKEN_GREATER:
+            emitByte(OP_GREATER);
+            break;
+        case TOKEN_GREATER_EQUAL:
+            emitBytes(OP_LESS, OP_NOT);
+            break;
+        case TOKEN_LESS:
+            emitByte(OP_LESS);
+            break;
+        case TOKEN_LESS_EQUAL:
+            emitBytes(OP_GREATER, OP_NOT);
+            break;
         default:
             return; // Unreachable.
     }
@@ -305,6 +331,22 @@ static void expression() {
 static void grouping() {
     expression();
     consumeAndNext(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
+}
+
+static void literal() {
+    switch (parser.previous.type) {
+        case TOKEN_FALSE:
+            emitByte(OP_FALSE);
+            break;
+        case TOKEN_NIL:
+            emitByte(OP_NIL);
+            break;
+        case TOKEN_TRUE:
+            emitByte(OP_TRUE);
+            break;
+        default:
+            return; // Unreachable.
+    }
 }
 
 bool compile(const char *source, Chunk *chunk) {

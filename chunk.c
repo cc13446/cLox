@@ -38,6 +38,6 @@ void writeChunk(Chunk *chunk, uint8_t byte, int line) {
 
 int addConstant(Chunk* chunk, Value value) {
     writeValueArray(&chunk->constants, value);
-    dbg("Add Value [%g] To Chunk INDEX [%d]", value, chunk->constants.size - 1)
+    dbg("Add Value [%g] To Chunk INDEX [%d]", AS_NUMBER(value), chunk->constants.size - 1)
     return chunk->constants.size - 1;
 }
