@@ -204,9 +204,11 @@ static void freeObjects() {
 void initVM() {
     resetStack();
     vm.objects = NULL;
+    initTable(&vm.strings);
 }
 
 void freeVM() {
+    freeTable(&vm.strings);
     freeObjects();
 }
 
@@ -248,5 +250,13 @@ Value peek(int distance) {
 void addObject(Object *object) {
     object->next = vm.objects;
     vm.objects = object;
+}
+
+void holdString(ObjectString *string) {
+    tableSet(&vm.strings, string, NIL_VAL);
+}
+
+ObjectString *findSting(const char *chars, int length, u_int32_t hash) {
+    return tableFindKey(&vm.strings, chars, length, hash);
 }
 

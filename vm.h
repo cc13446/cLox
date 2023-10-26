@@ -9,6 +9,7 @@
 
 #include "chunk.h"
 #include "value.h"
+#include "table.h"
 
 /**
  * 虚拟机
@@ -19,6 +20,7 @@ typedef struct {
     Value stack[STACK_MAX]; // 虚拟机栈
     Value *stackTop;        // 虚拟机栈顶
     Object * objects;       // 所有对象的链表
+    Table strings;          // 字符串常量池
 } VM;
 
 /**
@@ -71,5 +73,17 @@ Value peek(int distance);
  * @param object
  */
 void addObject(Object* object);
+
+/**
+ * 将字符串存入常量池
+ * @param string
+ */
+void holdString(ObjectString *string);
+
+/**
+ * 从常量池寻找字符串
+ * @param string
+ */
+ObjectString *findSting(const char *chars, int length, u_int32_t hash);
 
 #endif //CLOX_VM_H

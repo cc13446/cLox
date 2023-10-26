@@ -26,4 +26,6 @@ add_executable(cLox
         vm.c
         object.c
         object.h
+        table.c
+        table.h
 )
