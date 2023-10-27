@@ -115,6 +115,34 @@ static bool matchAndNext(TokenType type) {
     return true;
 }
 
+/**
+ * 恐慌恢复
+ */
+static void synchronize() {
+    parser.panicMode = false;
+
+    while (parser.current.type != TOKEN_EOF) {
+        if (parser.previous.type == TOKEN_SEMICOLON) {
+            return;
+        }
+        switch (parser.current.type) {
+            case TOKEN_CLASS:
+            case TOKEN_FUN:
+            case TOKEN_VAR:
+            case TOKEN_FOR:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_PRINT:
+            case TOKEN_RETURN:
+                return;
+
+            default:;
+                // Do nothing.
+        }
+        next();
+    }
+}
+
 // ========================== 字节码输出部分 ==========================
 
 /**
@@ -183,33 +211,38 @@ static void expression();
 /**
  * 数字
  */
-static void number();
+static void number(bool canAssign);
 
 /**
  * 字符串
  */
-static void string();
+static void string(bool canAssign);
 
 /**
  * 一元表达式
  */
-static void unary();
+static void unary(bool canAssign);
 
 /**
  * 二元表达式
  */
-static void binary();
+static void binary(bool canAssign);
 
 
 /**
  * 括号分组表达式
  */
-static void grouping();
+static void grouping(bool canAssign);
 
 /**
  * 保留字表达式
  */
-static void literal();
+static void literal(bool canAssign);
+
+/**
+ * 变量表达式
+ */
+static void variable(bool canAssign);
 
 /**
  * 语句
@@ -222,9 +255,19 @@ static void statement();
 static void printStatement();
 
 /**
+ * 表达式语句
+ */
+static void expressionStatement();
+
+/**
  * 声明
  */
 static void declaration();
+
+/**
+ * 变量声明
+ */
+static void varDeclaration();
 
 ParseRule rules[] = {
         [TOKEN_LEFT_PAREN]    = {grouping, NULL, PRECEDENCE_NONE},
@@ -246,7 +289,7 @@ ParseRule rules[] = {
         [TOKEN_GREATER_EQUAL] = {NULL, binary, PRECEDENCE_COMPARISON},
         [TOKEN_LESS]          = {NULL, binary, PRECEDENCE_COMPARISON},
         [TOKEN_LESS_EQUAL]    = {NULL, binary, PRECEDENCE_COMPARISON},
-        [TOKEN_IDENTIFIER]    = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_IDENTIFIER]    = {variable, NULL, PRECEDENCE_NONE},
         [TOKEN_STRING]        = {string, NULL, PRECEDENCE_NONE},
         [TOKEN_NUMBER]        = {number, NULL, PRECEDENCE_NONE},
         [TOKEN_AND]           = {NULL, NULL, PRECEDENCE_NONE},
@@ -291,31 +334,81 @@ static void parsePrecedence(Precedence precedence) {
         errorAtPrevious("Expect expression.");
         return;
     }
+
+    // 只有当前优先级为 PRECEDENCE_NONE 或者 PRECEDENCE_ASSIGNMENT 才允许附值
+    // 这个信息必须传递给变量表达式，避免变量表达式错误的解析了等号，优先级混乱
+    bool canAssign = precedence <= PRECEDENCE_ASSIGNMENT;
+
     // 解析前缀（可能会消耗更多的标识）
-    prefixRule();
+    prefixRule(canAssign);
 
     // 下一个操作符的优先级大于等于自己的时候继续解析中缀
     while (precedence <= getRule(parser.current.type)->precedence) {
         next();
         ParseFn infixRule = getRule(parser.previous.type)->infix;
-        infixRule();
+        infixRule(canAssign);
     }
+    // 如果变量表达式没有消耗等号，也就是附值给右值的情况，报错
+    // 比如是 a * b = 1
+    // a 会作为前缀解析
+    // * 会作为中缀解析
+    // b 会作为变量解析，由于此时为*的优先级，因此不允许附值，等号没被消耗
+    // 此时循环遇到当前Token是等号，等号的优先级其实为NONE，是比ASSIGNMENT低的，循环退出
+    // 这就达成了canAssign，但是等号没有消耗的场景
+    // 应该报错
+    // 为什么等号的中缀优先级反而是NONE呢？
+    // 因为等号并不是一个中缀运算符，其作为中缀出现的时候，是在附值语句中，不是在表达式中
+    // 现在思考一下正确的附值
+    // a = 1
+    // 这里 a 作为一个前缀解析
+    // 变量表达式解析的时候会解析等号
+    // 这里附值是成功的
+    if (canAssign && matchAndNext(TOKEN_EQUAL)) {
+        errorAtPrevious("Invalid assignment target.");
+    }
+}
+
+/**
+ * 生成一个变量对象，将变量加入字节码块中，并返回变量在字节码块中的位置
+ * @param name
+ * @return
+ */
+static uint8_t identifierConstant(Token *name) {
+    return makeConstant(OBJECT_VAL(copyString(name->start, name->length)));
+}
+
+/**
+ * 解析一个变量名，将变量加入字节码块中，返回变量在字节码块中的位置
+ * @param errorMessage
+ * @return
+ */
+static uint8_t parseVariable(const char *errorMessage) {
+    consumeAndNext(TOKEN_IDENTIFIER, errorMessage);
+    return identifierConstant(&parser.previous);
+}
+
+/**
+ * 定义一个变量
+ * @param global
+ */
+static void defineVariable(uint8_t global) {
+    emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
 static void expression() {
     parsePrecedence(PRECEDENCE_ASSIGNMENT);
 }
 
-static void number() {
+static void number(bool canAssign) {
     double value = strtod(parser.previous.start, NULL);
     emitConstant(NUMBER_VAL(value));
 }
 
-static void string() {
+static void string(bool canAssign) {
     emitConstant(OBJECT_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
 }
 
-static void unary() {
+static void unary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
 
     // Compile the operand.
@@ -334,7 +427,7 @@ static void unary() {
     }
 }
 
-static void binary() {
+static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule *rule = getRule(operatorType);
     // 只有右操作数都比自己多一级的时候才优先计算右操作数
@@ -376,12 +469,12 @@ static void binary() {
     }
 }
 
-static void grouping() {
+static void grouping(bool canAssign) {
     expression();
     consumeAndNext(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
 
-static void literal() {
+static void literal(bool canAssign) {
     switch (parser.previous.type) {
         case TOKEN_FALSE:
             emitByte(OP_FALSE);
@@ -397,9 +490,30 @@ static void literal() {
     }
 }
 
+/**
+ * 读取一个命名变量
+ * @param name
+ */
+static void namedVariable(Token name, bool canAssign) {
+    uint8_t arg = identifierConstant(&name);
+    // canAssign 标志避免变量表达式错误的处理等号
+    if (canAssign && matchAndNext(TOKEN_EQUAL)) {
+        expression();
+        emitBytes(OP_SET_GLOBAL, arg);
+    } else {
+        emitBytes(OP_GET_GLOBAL, arg);
+    }
+}
+
+static void variable(bool canAssign) {
+    namedVariable(parser.previous, canAssign);
+}
+
 static void statement() {
     if (matchAndNext(TOKEN_PRINT)) {
         printStatement();
+    } else {
+        expressionStatement();
     }
 }
 
@@ -409,8 +523,34 @@ static void printStatement() {
     emitByte(OP_PRINT);
 }
 
+static void expressionStatement() {
+    expression();
+    consumeAndNext(TOKEN_SEMICOLON, "Expect ';' after expression.");
+    emitByte(OP_POP);
+}
+
 static void declaration() {
-    statement();
+    if (matchAndNext(TOKEN_VAR)) {
+        varDeclaration();
+    } else {
+        statement();
+    }
+    if (parser.panicMode) {
+        synchronize();
+    }
+}
+
+static void varDeclaration() {
+    uint8_t global = parseVariable("Expect variable name.");
+
+    if (matchAndNext(TOKEN_EQUAL)) {
+        expression();
+    } else {
+        emitByte(OP_NIL);
+    }
+    consumeAndNext(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+    defineVariable(global);
 }
 
 bool compile(const char *source, Chunk *chunk) {

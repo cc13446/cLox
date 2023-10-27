@@ -21,6 +21,7 @@ typedef struct {
     Value *stackTop;        // 虚拟机栈顶
     Object * objects;       // 所有对象的链表
     Table strings;          // 字符串常量池
+    Table globals;          // 全局变量
 } VM;
 
 /**

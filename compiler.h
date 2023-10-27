@@ -38,7 +38,7 @@ typedef enum {
 /**
  * 解析函数
  */
-typedef void (*ParseFn)();
+typedef void (*ParseFn)(bool canAssign);
 
 /**
  * 解析表格
