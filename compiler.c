@@ -52,7 +52,7 @@ static void errorAt(Token *token, const char *message) {
  * 前一个 Token 有错误
  * @param message
  */
-static void errorPrevious(const char *message) {
+static void errorAtPrevious(const char *message) {
     errorAt(&parser.previous, message);
 }
 
@@ -93,6 +93,28 @@ static void consumeAndNext(TokenType type, const char *message) {
     errorAtCurrent(message);
 }
 
+/**
+ * 检查当前token是否匹配
+ * @param type
+ * @return
+ */
+static bool check(TokenType type) {
+    return parser.current.type == type;
+}
+
+/**
+ * 匹配一个token，并前进一步
+ * @param type
+ * @return
+ */
+static bool matchAndNext(TokenType type) {
+    if (!check(type)) {
+        return false;
+    }
+    next();
+    return true;
+}
+
 // ========================== 字节码输出部分 ==========================
 
 /**
@@ -128,7 +150,7 @@ static void emitReturn() {
 static uint8_t makeConstant(Value value) {
     int constant = addConstant(currentChunk(), value);
     if (constant > UINT8_MAX) {
-        errorPrevious("Too many constants in one chunk.");
+        errorAtPrevious("Too many constants in one chunk.");
         return 0;
     }
 
@@ -154,6 +176,11 @@ static void endCompiler() {
 // ========================== 中间代码 ==========================
 
 /**
+ * 表达式
+ */
+static void expression();
+
+/**
  * 数字
  */
 static void number();
@@ -173,10 +200,6 @@ static void unary();
  */
 static void binary();
 
-/**
- * 表达式
- */
-static void expression();
 
 /**
  * 括号分组表达式
@@ -187,6 +210,21 @@ static void grouping();
  * 保留字表达式
  */
 static void literal();
+
+/**
+ * 语句
+ */
+static void statement();
+
+/**
+ * 输出语句
+ */
+static void printStatement();
+
+/**
+ * 声明
+ */
+static void declaration();
 
 ParseRule rules[] = {
         [TOKEN_LEFT_PAREN]    = {grouping, NULL, PRECEDENCE_NONE},
@@ -250,7 +288,7 @@ static void parsePrecedence(Precedence precedence) {
     // 根据当前标识查找对应的前缀解析器
     ParseFn prefixRule = getRule(parser.previous.type)->prefix;
     if (prefixRule == NULL) {
-        errorPrevious("Expect expression.");
+        errorAtPrevious("Expect expression.");
         return;
     }
     // 解析前缀（可能会消耗更多的标识）
@@ -262,6 +300,10 @@ static void parsePrecedence(Precedence precedence) {
         ParseFn infixRule = getRule(parser.previous.type)->infix;
         infixRule();
     }
+}
+
+static void expression() {
+    parsePrecedence(PRECEDENCE_ASSIGNMENT);
 }
 
 static void number() {
@@ -334,10 +376,6 @@ static void binary() {
     }
 }
 
-static void expression() {
-    parsePrecedence(PRECEDENCE_ASSIGNMENT);
-}
-
 static void grouping() {
     expression();
     consumeAndNext(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
@@ -359,6 +397,22 @@ static void literal() {
     }
 }
 
+static void statement() {
+    if (matchAndNext(TOKEN_PRINT)) {
+        printStatement();
+    }
+}
+
+static void printStatement() {
+    expression();
+    consumeAndNext(TOKEN_SEMICOLON, "Expect ';' after value.");
+    emitByte(OP_PRINT);
+}
+
+static void declaration() {
+    statement();
+}
+
 bool compile(const char *source, Chunk *chunk) {
     initScanner(source);
     compilingChunk = chunk;
@@ -366,7 +420,9 @@ bool compile(const char *source, Chunk *chunk) {
     parser.panicMode = false;
     next();
 
-    expression();
+    while (!matchAndNext(TOKEN_EOF)) {
+        declaration();
+    }
 
     consumeAndNext(TOKEN_EOF, "Expect end of expression.");
     endCompiler();
