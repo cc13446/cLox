@@ -1,10 +1,8 @@
 var a = 1;
 var b = 2;
 {
-    var a = a + b;
-    var b = a + b;
-    a = 5;
-    print a;
-    print b;
+    for (var i = 0; i < b; i = i + 1)  {
+        a = a + i;
+    }
 }
-print b;
+print a;
