@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "common.h"
 #include "compiler.h"
@@ -12,14 +13,25 @@
 #include "object.h"
 
 Parser parser;
-Chunk *compilingChunk;
+Chunk *currentChunk;
+Compiler *currentCompiler;
+
+/**
+ * 初始化编译器
+ * @param compiler
+ */
+static void initCompiler(Compiler *compiler) {
+    compiler->localCount = 0;
+    compiler->scopeDepth = 0;
+    currentCompiler = compiler;
+}
 
 /**
  * 当前字节码块
  * @return
  */
-static Chunk *currentChunk() {
-    return compilingChunk;
+static Chunk *getCurrentChunk() {
+    return currentChunk;
 }
 
 // ========================== AST 解析部分 ==========================
@@ -150,7 +162,7 @@ static void synchronize() {
  * @param byte
  */
 static void emitByte(uint8_t byte) {
-    writeChunk(currentChunk(), byte, parser.previous.line);
+    writeChunk(getCurrentChunk(), byte, parser.previous.line);
 }
 
 /**
@@ -176,7 +188,7 @@ static void emitReturn() {
  * @param byte
  */
 static uint8_t makeConstant(Value value) {
-    int constant = addConstant(currentChunk(), value);
+    int constant = addConstant(getCurrentChunk(), value);
     if (constant > UINT8_MAX) {
         errorAtPrevious("Too many constants in one chunk.");
         return 0;
@@ -198,7 +210,7 @@ static void emitConstant(Value value) {
  */
 static void endCompiler() {
     emitReturn();
-    dbgChunk(currentChunk(), "code");
+    dbgChunk(getCurrentChunk(), "code");
 }
 
 // ========================== 中间代码 ==========================
@@ -258,6 +270,11 @@ static void printStatement();
  * 表达式语句
  */
 static void expressionStatement();
+
+/**
+ * 块语句
+ */
+static void block();
 
 /**
  * 声明
@@ -369,12 +386,66 @@ static void parsePrecedence(Precedence precedence) {
 }
 
 /**
- * 生成一个变量对象，将变量加入字节码块中，并返回变量在字节码块中的位置
+ * 生成一个变量对象，将变量加入字节码块常量中，并返回变量在字节码块中的位置
  * @param name
  * @return
  */
 static uint8_t identifierConstant(Token *name) {
     return makeConstant(OBJECT_VAL(copyString(name->start, name->length)));
+}
+
+/**
+ * 添加局部变量
+ * @param name
+ */
+static void addLocal(Token name) {
+    if (currentCompiler->localCount == UINT8_COUNT) {
+        errorAtPrevious("Too many local variables in function.");
+        return;
+    }
+    Local *local = &currentCompiler->locals[currentCompiler->localCount++];
+    local->name = name;
+    // 这里暂时将变量作用域的深度定义为 -1
+    // 避免 var a = a; 这样的语句，因为错误的变量遮蔽找不到变量
+    local->depth = -1;
+}
+
+/**
+ * 检测两个Token 是否相等
+ * @param a
+ * @param b
+ * @return
+ */
+static bool identifiersEqual(Token *a, Token *b) {
+    if (a->length != b->length) {
+        return false;
+    }
+    return memcmp(a->start, b->start, a->length) == 0;
+}
+
+/**
+ * 声明局部变量
+ */
+static void declareVariable() {
+    if (currentCompiler->scopeDepth == 0) {
+        return;
+    }
+
+    Token *name = &parser.previous;
+    // 检测变量重复声明
+    for (int i = currentCompiler->localCount - 1; i >= 0; i--) {
+        Local *local = &currentCompiler->locals[i];
+        // depth为-1代表声明未定义
+        if (local->depth != -1 && local->depth < currentCompiler->scopeDepth) {
+            break;
+        }
+
+        if (identifiersEqual(name, &local->name)) {
+            errorAtPrevious("Already a variable with this name in this scope.");
+        }
+    }
+
+    addLocal(*name);
 }
 
 /**
@@ -384,7 +455,20 @@ static uint8_t identifierConstant(Token *name) {
  */
 static uint8_t parseVariable(const char *errorMessage) {
     consumeAndNext(TOKEN_IDENTIFIER, errorMessage);
+    // 如果是局部变量，在这里声明局部变量
+    declareVariable();
+    // 如果是局部变量，说明变量已经在栈中，返回一个假的表索引，不将其添加到常量表中
+    if (currentCompiler->scopeDepth > 0) {
+        return 0;
+    }
     return identifierConstant(&parser.previous);
+}
+
+/**
+ * 局部变量声明结束，将深度还原为正确的作用域深度
+ */
+static void markInitialized() {
+    currentCompiler->locals[currentCompiler->localCount - 1].depth = currentCompiler->scopeDepth;
 }
 
 /**
@@ -392,7 +476,80 @@ static uint8_t parseVariable(const char *errorMessage) {
  * @param global
  */
 static void defineVariable(uint8_t global) {
+    if (currentCompiler->scopeDepth > 0) {
+        // 声明变量的时候，变量的深度为-1 这里要将深度还原为正确的作用域深度
+        markInitialized();
+        return;
+    }
     emitBytes(OP_DEFINE_GLOBAL, global);
+}
+
+/**
+ * 解析局部变量
+ * @param compiler
+ * @param name
+ * @return
+ */
+static int resolveLocal(Compiler *compiler, Token *name) {
+    for (int i = compiler->localCount - 1; i >= 0; i--) {
+        Local *local = &compiler->locals[i];
+        if (identifiersEqual(name, &local->name)) {
+            // 变量声明未定义
+            // 说明出现了 var a = a;
+            // 此时向上级作用域寻找
+            if (local->depth != -1) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+/**
+ * 开启一个作用域
+ */
+static void beginScope() {
+    currentCompiler->scopeDepth++;
+}
+
+/**
+ * 结束一个作用域
+ */
+static void endScope() {
+    currentCompiler->scopeDepth--;
+    // 删除死去作用域中的局部变量
+    // 这里局部变量在栈中一定是挨在一起的么？
+    // 临时变量用过之后都pop了，应该是的
+    while (currentCompiler->localCount > 0 &&
+           currentCompiler->locals[currentCompiler->localCount - 1].depth > currentCompiler->scopeDepth) {
+        emitByte(OP_POP);
+        currentCompiler->localCount--;
+    }
+}
+
+/**
+ * 读取一个命名变量
+ * @param name
+ */
+static void namedVariable(Token name, bool canAssign) {
+    uint8_t getOp, setOp;
+    // 先在局部变量中寻找
+    int arg = resolveLocal(currentCompiler, &name);
+    if (arg != -1) {
+        getOp = OP_GET_LOCAL;
+        setOp = OP_SET_LOCAL;
+    } else {
+        arg = identifierConstant(&name);
+        getOp = OP_GET_GLOBAL;
+        setOp = OP_SET_GLOBAL;
+    }
+    // canAssign 标志避免变量表达式错误的处理等号
+    if (canAssign && matchAndNext(TOKEN_EQUAL)) {
+        expression();
+        emitBytes(setOp, (uint8_t) arg);
+    } else {
+        emitBytes(getOp, (uint8_t) arg);
+    }
 }
 
 static void expression() {
@@ -490,21 +647,6 @@ static void literal(bool canAssign) {
     }
 }
 
-/**
- * 读取一个命名变量
- * @param name
- */
-static void namedVariable(Token name, bool canAssign) {
-    uint8_t arg = identifierConstant(&name);
-    // canAssign 标志避免变量表达式错误的处理等号
-    if (canAssign && matchAndNext(TOKEN_EQUAL)) {
-        expression();
-        emitBytes(OP_SET_GLOBAL, arg);
-    } else {
-        emitBytes(OP_GET_GLOBAL, arg);
-    }
-}
-
 static void variable(bool canAssign) {
     namedVariable(parser.previous, canAssign);
 }
@@ -512,6 +654,10 @@ static void variable(bool canAssign) {
 static void statement() {
     if (matchAndNext(TOKEN_PRINT)) {
         printStatement();
+    } else if (matchAndNext(TOKEN_LEFT_BRACE)) {
+        beginScope();
+        block();
+        endScope();
     } else {
         expressionStatement();
     }
@@ -527,6 +673,13 @@ static void expressionStatement() {
     expression();
     consumeAndNext(TOKEN_SEMICOLON, "Expect ';' after expression.");
     emitByte(OP_POP);
+}
+
+static void block() {
+    while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+        declaration();
+    }
+    consumeAndNext(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
 static void declaration() {
@@ -555,7 +708,12 @@ static void varDeclaration() {
 
 bool compile(const char *source, Chunk *chunk) {
     initScanner(source);
-    compilingChunk = chunk;
+
+    Compiler compiler;
+    initCompiler(&compiler);
+
+    currentChunk = chunk;
+
     parser.hadError = false;
     parser.panicMode = false;
     next();

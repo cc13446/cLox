@@ -19,6 +19,23 @@ typedef struct {
 } Parser;
 
 /**
+ * 局部变量
+ */
+typedef struct {
+    Token name;
+    int depth;
+} Local;
+
+/**
+ * 编译器
+ */
+typedef struct {
+    Local locals[UINT8_COUNT];
+    int localCount;
+    int scopeDepth;
+} Compiler;
+
+/**
  * 中缀运算符优先级处理
  */
 typedef enum {
