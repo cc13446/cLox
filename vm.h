@@ -26,13 +26,13 @@ typedef struct {
  * 虚拟机
  */
 typedef struct {
-    CallFrame frames[FRAMES_MAX]; // 调用栈
-    int frameCount;
-    Value stack[STACK_MAX]; // 虚拟机栈
-    Value *stackTop;        // 虚拟机栈顶
-    Object *objects;        // 所有对象的链表
-    Table strings;          // 字符串常量池
-    Table globals;          // 全局变量
+    CallFrame frames[FRAMES_MAX];   // 调用栈
+    int frameCount;                 // 调用栈数量
+    Value stack[STACK_MAX];         // 虚拟机栈
+    Value *stackTop;                // 虚拟机栈顶
+    Object *objects;                // 所有对象的链表
+    Table strings;                  // 字符串常量池
+    Table globals;                  // 全局变量
 } VM;
 
 /**
