@@ -1,7 +1,8 @@
-var a = 1;
-fun b() {
-    a = a + 1;
+fun a(a1) {
+    fun b(b1) {
+        return a1 + b1;
+    }
+    return b;
 }
 
-b();
-print a;
+print a(1)(2);

@@ -23,6 +23,7 @@ VM vm;
 static void resetStack() {
     vm.stackTop = vm.stack;
     vm.frameCount = 0;
+    vm.openUpValues = NULL;
 }
 
 /**
@@ -38,7 +39,7 @@ static void runtimeError(const char *format, ...) {
     // 打印栈帧
     for (int i = vm.frameCount - 1; i >= 0; i--) {
         CallFrame *frame = &vm.frames[i];
-        ObjectFunction *function = frame->function;
+        ObjectFunction *function = frame->closure->function;
         size_t instruction = frame->ip - function->chunk.code - 1;
         fprintf(stderr, "[line %d] in ", function->chunk.lines[instruction]);
         if (function->name == NULL) {
@@ -105,10 +106,10 @@ static void concatString() {
  * @param argCount
  * @return
  */
-static bool call(ObjectFunction *function, int argCount) {
+static bool call(ObjectClosure *closure, int argCount) {
     // 参数数量检查
-    if (argCount != function->arity) {
-        runtimeError("Expected %d arguments but got %d.", function->arity, argCount);
+    if (argCount != closure->function->arity) {
+        runtimeError("Expected %d arguments but got %d.", closure->function->arity, argCount);
         return false;
     }
 
@@ -119,8 +120,8 @@ static bool call(ObjectFunction *function, int argCount) {
     }
 
     CallFrame *frame = &vm.frames[vm.frameCount++];
-    frame->function = function;
-    frame->ip = function->chunk.code;
+    frame->closure = closure;
+    frame->ip = closure->function->chunk.code;
     // 复用形参
     frame->slots = vm.stackTop - argCount - 1;
     return true;
@@ -135,8 +136,8 @@ static bool call(ObjectFunction *function, int argCount) {
 static bool callValue(Value callee, int argCount) {
     if (IS_OBJECT(callee)) {
         switch (OBJECT_TYPE(callee)) {
-            case OBJECT_FUNCTION:
-                return call(AS_FUNCTION(callee), argCount);
+            case OBJECT_CLOSURE:
+                return call(AS_CLOSURE(callee), argCount);
             case OBJECT_NATIVE: {
                 NativeFn native = AS_NATIVE(callee);
                 Value result = native(argCount, vm.stackTop - argCount);
@@ -153,6 +154,50 @@ static bool callValue(Value callee, int argCount) {
 }
 
 /**
+ * 捕获上值
+ * @param local
+ * @return
+ */
+static ObjectUpValue *captureUpValue(Value *local) {
+    // 所有关闭的上值都会记录在这个链表中
+    // 因此捕获上值之前，先看看这个表中有没有
+    ObjectUpValue *prevUpValue = NULL;
+    ObjectUpValue *upValue = vm.openUpValues;
+    while (upValue != NULL && upValue->location > local) {
+        prevUpValue = upValue;
+        upValue = upValue->next;
+    }
+
+    if (upValue != NULL && upValue->location == local) {
+        return upValue;
+    }
+
+    ObjectUpValue *createdUpValue = newUpValue(local);
+    createdUpValue->next = upValue;
+    // 如果在上表中没有查到，这里捕获了新的上值，在表中记录一下
+    if (prevUpValue == NULL) {
+        vm.openUpValues = createdUpValue;
+    } else {
+        prevUpValue->next = createdUpValue;
+    }
+    return createdUpValue;
+}
+
+/**
+ * 关闭上值
+ * @param last
+ */
+static void closeUpValues(Value *last) {
+    while (vm.openUpValues != NULL && vm.openUpValues->location >= last) {
+        ObjectUpValue *upValue = vm.openUpValues;
+        // 隐含的拷贝
+        upValue->closed = *upValue->location;
+        upValue->location = &upValue->closed;
+        vm.openUpValues = upValue->next;
+    }
+}
+
+/**
  * 执行字节码
  * @return
  */
@@ -163,7 +208,7 @@ static InterpretResult run() {
 #define READ_BYTE() (*frame->ip++)
 #define READ_SHORT() (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 // 读取常量
-#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
+#define READ_CONSTANT() (frame->closure->function->chunk.constants.values[READ_BYTE()])
 // 读取字符串
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 // 二元运算
@@ -180,11 +225,13 @@ static InterpretResult run() {
 
     for (;;) {
         dbgStack(vm);
-        dbgInstruction(&frame->function->chunk, (int) (frame->ip - frame->function->chunk.code));
+        dbgInstruction(&frame->closure->function->chunk, (int) (frame->ip - frame->closure->function->chunk.code));
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
             case OP_RETURN: {
                 Value result = pop();
+                // 从函数返回的时候关闭上值
+                closeUpValues(frame->slots);
                 vm.frameCount--;
                 if (vm.frameCount == 0) {
                     pop();
@@ -246,6 +293,16 @@ static InterpretResult run() {
             case OP_SET_LOCAL: {
                 uint8_t slot = READ_BYTE();
                 frame->slots[slot] = peek(0);
+                break;
+            }
+            case OP_GET_UP_VALUE: {
+                uint8_t slot = READ_BYTE();
+                push(*frame->closure->upValues[slot]->location);
+                break;
+            }
+            case OP_SET_UP_VALUE: {
+                uint8_t slot = READ_BYTE();
+                *frame->closure->upValues[slot]->location = peek(0);
                 break;
             }
             case OP_EQUAL: {
@@ -334,6 +391,26 @@ static InterpretResult run() {
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
+            case OP_CLOSURE: {
+                ObjectFunction *function = AS_FUNCTION(READ_CONSTANT());
+                ObjectClosure *closure = newClosure(function);
+                push(OBJECT_VAL(closure));
+                for (int i = 0; i < closure->upValueCount; i++) {
+                    uint8_t isLocal = READ_BYTE();
+                    uint8_t index = READ_BYTE();
+                    if (isLocal) {
+                        closure->upValues[i] = captureUpValue(frame->slots + index);
+                    } else {
+                        closure->upValues[i] = frame->closure->upValues[index];
+                    }
+                }
+                break;
+            }
+            case OP_CLOSE_UP_VALUE:
+                // 此时这个局部变量已经被闭包捕捉了
+                closeUpValues(vm.stackTop - 1);
+                pop();
+                break;
         }
     }
 
@@ -364,6 +441,15 @@ static void freeObject(Object *object) {
         }
         case OBJECT_NATIVE:
             FREE(ObjectNative, object);
+            break;
+        case OBJECT_CLOSURE: {
+            ObjectClosure *closure = (ObjectClosure *) object;
+            FREE_ARRAY(ObjectUpValue *, closure->upValues, closure->upValueCount);
+            FREE(ObjectClosure, object);
+            break;
+        }
+        case OBJECT_UP_VALUE:
+            FREE(ObjectUpValue, object);
             break;
     }
 }
@@ -403,7 +489,10 @@ InterpretResult interpret(const char *source) {
     }
 
     push(OBJECT_VAL(function));
-    call(function, 0);
+    ObjectClosure *closure = newClosure(function);
+    pop();
+    push(OBJECT_VAL(closure));
+    call(closure, 0);
 
     dbg("Start Run");
     InterpretResult result = run();

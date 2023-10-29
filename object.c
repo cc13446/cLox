@@ -101,6 +101,12 @@ void printObject(Value value) {
         case OBJECT_NATIVE:
             printf("<native fn>");
             break;
+        case OBJECT_CLOSURE:
+            printFunction(AS_CLOSURE(value)->function);
+            break;
+        case OBJECT_UP_VALUE:
+            printf("upValue");
+            break;
     }
 }
 
@@ -109,11 +115,32 @@ ObjectFunction *newFunction() {
     function->arity = 0;
     function->name = NULL;
     initChunk(&function->chunk);
+    function->upValueCount = 0;
     return function;
 }
 
-ObjectNative* newNative(NativeFn function) {
-    ObjectNative* native = ALLOCATE_OBJECT(ObjectNative, OBJECT_NATIVE);
+ObjectNative *newNative(NativeFn function) {
+    ObjectNative *native = ALLOCATE_OBJECT(ObjectNative, OBJECT_NATIVE);
     native->function = function;
     return native;
+}
+
+ObjectClosure *newClosure(ObjectFunction *function) {
+    ObjectUpValue **upValues = ALLOCATE(ObjectUpValue*, function->upValueCount);
+    for (int i = 0; i < function->upValueCount; i++) {
+        upValues[i] = NULL;
+    }
+    ObjectClosure *closure = ALLOCATE_OBJECT(ObjectClosure, OBJECT_CLOSURE);
+    closure->function = function;
+    closure->upValues = upValues;
+    closure->upValueCount = function->upValueCount;
+    return closure;
+}
+
+ObjectUpValue *newUpValue(Value *slot) {
+    ObjectUpValue *upValue = ALLOCATE_OBJECT(ObjectUpValue, OBJECT_UP_VALUE);
+    upValue->closed = NIL_VAL;
+    upValue->location = slot;
+    upValue->next = NULL;
+    return upValue;
 }

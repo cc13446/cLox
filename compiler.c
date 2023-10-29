@@ -40,6 +40,7 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
     local->depth = 0;
     local->name.start = "";
     local->name.length = 0;
+    local->isCaptured = false;
 }
 
 /**
@@ -522,6 +523,7 @@ static void addLocal(Token name) {
     // 这里暂时将变量作用域的深度定义为 -1
     // 避免 var a = a; 这样的语句，因为错误的变量遮蔽找不到变量
     local->depth = -1;
+    local->isCaptured = false;
 }
 
 /**
@@ -643,6 +645,56 @@ static int resolveLocal(Compiler *compiler, Token *name) {
 }
 
 /**
+ * 查询上值，添加引用
+ * @param compiler
+ * @param index
+ * @param isLocal
+ * @return
+ */
+static int addUpValue(Compiler *compiler, uint8_t index, bool isLocal) {
+    int upValueCount = compiler->function->upValueCount;
+    // 多个相同的上值使用一个槽
+    for (int i = 0; i < upValueCount; i++) {
+        UpValue *upValue = &compiler->upValues[i];
+        if (upValue->index == index && upValue->isLocal == isLocal) {
+            return i;
+        }
+    }
+    if (upValueCount == UINT8_COUNT) {
+        errorAtPrevious("Too many closure variables in function.");
+        return 0;
+    }
+    compiler->upValues[upValueCount].isLocal = isLocal;
+    compiler->upValues[upValueCount].index = index;
+    return compiler->function->upValueCount++;
+}
+
+/**
+ * 解析上值，用于闭包
+ * @param compiler
+ * @param name
+ * @return
+ */
+static int resolveUpValue(Compiler *compiler, Token *name) {
+    if (compiler->enclosing == NULL) {
+        return -1;
+    }
+
+    int local = resolveLocal(compiler->enclosing, name);
+    if (local != -1) {
+        compiler->enclosing->locals[local].isCaptured = true;
+        return addUpValue(compiler, (uint8_t) local, true);
+    }
+
+    // 在这递归中的每一步，我们都向中间函数添加一个上值，并将得到的上值索引向下传递给下一个调用
+    int upValue = resolveUpValue(compiler->enclosing, name);
+    if (upValue != -1) {
+        return addUpValue(compiler, (uint8_t) upValue, false);
+    }
+    return -1;
+}
+
+/**
  * 开启一个作用域
  */
 static void beginScope() {
@@ -659,7 +711,11 @@ static void endScope() {
     // 临时变量用过之后都pop了，应该是的
     while (currentCompiler->localCount > 0 &&
            currentCompiler->locals[currentCompiler->localCount - 1].depth > currentCompiler->scopeDepth) {
-        emitByte(OP_POP);
+        if (currentCompiler->locals[currentCompiler->localCount - 1].isCaptured) {
+            emitByte(OP_CLOSE_UP_VALUE);
+        } else {
+            emitByte(OP_POP);
+        }
         currentCompiler->localCount--;
     }
 }
@@ -675,6 +731,9 @@ static void namedVariable(Token name, bool canAssign) {
     if (arg != -1) {
         getOp = OP_GET_LOCAL;
         setOp = OP_SET_LOCAL;
+    } else if ((arg = resolveUpValue(currentCompiler, &name)) != -1) {
+        getOp = OP_GET_UP_VALUE;
+        setOp = OP_SET_UP_VALUE;
     } else {
         arg = identifierConstant(&name);
         getOp = OP_GET_GLOBAL;
@@ -977,9 +1036,16 @@ static void functionStatement(FunctionType type) {
     consumeAndNext(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
     consumeAndNext(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
     blockStatement();
+    // 没必要，因为整个栈帧都要弹出了
+    // endScope();
 
     ObjectFunction *function = endCompiler();
-    emitBytes(OP_CONSTANT, makeConstant(OBJECT_VAL(function)));
+    // 闭包
+    emitBytes(OP_CLOSURE, makeConstant(OBJECT_VAL(function)));
+    for (int i = 0; i < function->upValueCount; i++) {
+        emitByte(compiler.upValues[i].isLocal ? 1 : 0);
+        emitByte(compiler.upValues[i].index);
+    }
 }
 
 static void declaration() {

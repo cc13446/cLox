@@ -17,7 +17,7 @@
  * 调用栈
  */
 typedef struct {
-    ObjectFunction *function;
+    ObjectClosure* closure;
     uint8_t *ip;
     Value *slots;
 } CallFrame;
@@ -33,6 +33,7 @@ typedef struct {
     Object *objects;                // 所有对象的链表
     Table strings;                  // 字符串常量池
     Table globals;                  // 全局变量
+    ObjectUpValue* openUpValues;    // 被关闭的上值
 } VM;
 
 /**

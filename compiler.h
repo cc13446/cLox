@@ -25,7 +25,16 @@ typedef struct {
 typedef struct {
     Token name;
     int depth;
+    bool isCaptured; // 是否被捕捉
 } Local;
+
+/**
+ * 上值
+ */
+typedef struct {
+    uint8_t index;
+    bool isLocal;
+} UpValue;
 
 /**
  * 函数类型
@@ -43,6 +52,7 @@ typedef struct Compiler {
 
     ObjectFunction* function;
     FunctionType type;
+    UpValue upValues[UINT8_COUNT];
 
     Local locals[UINT8_COUNT];
     int localCount;

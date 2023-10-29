@@ -14,11 +14,13 @@
 #define IS_STRING(value)       isObjectType(value, OBJECT_STRING)
 #define IS_FUNCTION(value)     isObjectType(value, OBJECT_FUNCTION)
 #define IS_NATIVE(value)       isObjectType(value, OBJECT_NATIVE)
+#define IS_CLOSURE(value)      isObjectType(value, OBJECT_CLOSURE)
 
 #define AS_STRING(value)       ((ObjectString*)AS_OBJECT(value))
 #define AS_CSTRING(value)      (((ObjectString*)AS_OBJECT(value))->chars)
 #define AS_FUNCTION(value)     ((ObjectFunction*)AS_OBJECT(value))
 #define AS_NATIVE(value)       (((ObjectNative*)AS_OBJECT(value))->function)
+#define AS_CLOSURE(value)      ((ObjectClosure*)AS_OBJECT(value))
 
 /**
  * 对象类型
@@ -26,7 +28,9 @@
 typedef enum {
     OBJECT_STRING,
     OBJECT_FUNCTION,
-    OBJECT_NATIVE
+    OBJECT_NATIVE,
+    OBJECT_CLOSURE,
+    OBJECT_UP_VALUE
 } ObjectType;
 
 struct Object {
@@ -53,7 +57,22 @@ typedef struct {
     int arity;
     Chunk chunk;
     ObjectString *name;
+    int upValueCount;
 } ObjectFunction;
+
+typedef struct ObjectUpValue {
+    Object object;
+    Value *location;
+    Value closed;
+    struct ObjectUpValue* next;
+} ObjectUpValue;
+
+typedef struct {
+    Object object;
+    ObjectFunction *function;
+    ObjectUpValue **upValues;
+    int upValueCount;
+} ObjectClosure;
 
 /**
  * 为什么不是放在宏里？
@@ -108,5 +127,19 @@ ObjectFunction *newFunction();
  * @return
  */
 ObjectNative *newNative(NativeFn function);
+
+/**
+ * 新建闭包对象
+ * @param function
+ * @return
+ */
+ObjectClosure *newClosure(ObjectFunction *function);
+
+/**
+ * 新建上值对象
+ * @param function
+ * @return
+ */
+ObjectUpValue *newUpValue(Value *slot);
 
 #endif //CLOX_OBJECT_H
