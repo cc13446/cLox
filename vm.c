@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <time.h>
 
 #include "vm.h"
 #include "debug.h"
@@ -21,6 +22,7 @@ VM vm;
  */
 static void resetStack() {
     vm.stackTop = vm.stack;
+    vm.frameCount = 0;
 }
 
 /**
@@ -33,10 +35,42 @@ static void runtimeError(const char *format, ...) {
     va_end(args);
     fputs("\n", stderr);
 
-    size_t instruction = vm.ip - vm.chunk->code - 1;
-    int line = vm.chunk->lines[instruction];
-    fprintf(stderr, "[line %d] in script\n", line);
+    // 打印栈帧
+    for (int i = vm.frameCount - 1; i >= 0; i--) {
+        CallFrame *frame = &vm.frames[i];
+        ObjectFunction *function = frame->function;
+        size_t instruction = frame->ip - function->chunk.code - 1;
+        fprintf(stderr, "[line %d] in ", function->chunk.lines[instruction]);
+        if (function->name == NULL) {
+            fprintf(stderr, "script\n");
+        } else {
+            fprintf(stderr, "%s()\n", function->name->chars);
+        }
+    }
     resetStack();
+}
+
+/**
+ * 定义本地函数
+ * @param name
+ * @param function
+ */
+static void defineNative(const char *name, NativeFn function) {
+    push(OBJECT_VAL(copyString(name, (int) strlen(name))));
+    push(OBJECT_VAL(newNative(function)));
+    tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    pop();
+    pop();
+}
+
+/**
+ * 添加时钟函数
+ * @param argCount
+ * @param args
+ * @return
+ */
+static Value clockNative(int argCount, Value *args) {
+    return NUMBER_VAL((double) clock() / CLOCKS_PER_SEC);
 }
 
 /**
@@ -66,16 +100,70 @@ static void concatString() {
 }
 
 /**
+ * 函数调用
+ * @param function
+ * @param argCount
+ * @return
+ */
+static bool call(ObjectFunction *function, int argCount) {
+    // 参数数量检查
+    if (argCount != function->arity) {
+        runtimeError("Expected %d arguments but got %d.", function->arity, argCount);
+        return false;
+    }
+
+    // 调用溢出检查
+    if (vm.frameCount == FRAMES_MAX) {
+        runtimeError("Stack overflow.");
+        return false;
+    }
+
+    CallFrame *frame = &vm.frames[vm.frameCount++];
+    frame->function = function;
+    frame->ip = function->chunk.code;
+    // 复用形参
+    frame->slots = vm.stackTop - argCount - 1;
+    return true;
+}
+
+/**
+ * 函数调用检查
+ * @param callee
+ * @param argCount
+ * @return
+ */
+static bool callValue(Value callee, int argCount) {
+    if (IS_OBJECT(callee)) {
+        switch (OBJECT_TYPE(callee)) {
+            case OBJECT_FUNCTION:
+                return call(AS_FUNCTION(callee), argCount);
+            case OBJECT_NATIVE: {
+                NativeFn native = AS_NATIVE(callee);
+                Value result = native(argCount, vm.stackTop - argCount);
+                vm.stackTop -= argCount + 1;
+                push(result);
+                return true;
+            }
+            default:
+                break; // Non-callable object type.
+        }
+    }
+    runtimeError("Can only call functions and classes.");
+    return false;
+}
+
+/**
  * 执行字节码
  * @return
  */
 static InterpretResult run() {
+    CallFrame *frame = &vm.frames[vm.frameCount - 1];
 
 // 读取字节码
-#define READ_BYTE() (*vm.ip++)
-#define READ_SHORT() (vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
+#define READ_BYTE() (*frame->ip++)
+#define READ_SHORT() (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 // 读取常量
-#define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
 // 读取字符串
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 // 二元运算
@@ -92,12 +180,21 @@ static InterpretResult run() {
 
     for (;;) {
         dbgStack(vm);
-        dbgInstruction(vm.chunk, (int) (vm.ip - vm.chunk->code));
+        dbgInstruction(&frame->function->chunk, (int) (frame->ip - frame->function->chunk.code));
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
             case OP_RETURN: {
-                // Exit interpreter.
-                return INTERPRET_OK;
+                Value result = pop();
+                vm.frameCount--;
+                if (vm.frameCount == 0) {
+                    pop();
+                    return INTERPRET_OK;
+                }
+
+                vm.stackTop = frame->slots;
+                push(result);
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
             }
             case OP_CONSTANT: {
                 Value constant = READ_CONSTANT();
@@ -143,12 +240,12 @@ static InterpretResult run() {
             }
             case OP_GET_LOCAL: {
                 uint8_t slot = READ_BYTE();
-                push(vm.stack[slot]);
+                push(frame->slots[slot]);
                 break;
             }
             case OP_SET_LOCAL: {
                 uint8_t slot = READ_BYTE();
-                vm.stack[slot] = peek(0);
+                frame->slots[slot] = peek(0);
                 break;
             }
             case OP_EQUAL: {
@@ -213,19 +310,28 @@ static InterpretResult run() {
             }
             case OP_JUMP: {
                 uint16_t offset = READ_SHORT();
-                vm.ip += offset;
+                frame->ip += offset;
                 break;
             }
             case OP_JUMP_IF_FALSE: {
                 uint16_t offset = READ_SHORT();
                 if (isFalse(peek(0))) {
-                    vm.ip += offset;
+                    frame->ip += offset;
                 }
                 break;
             }
             case OP_LOOP: {
                 uint16_t offset = READ_SHORT();
-                vm.ip -= offset;
+                frame->ip -= offset;
+                break;
+            }
+            case OP_CALL: {
+                int argCount = READ_BYTE();
+                if (!callValue(peek(argCount), argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // 函数调用会创建新的栈侦
+                frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
         }
@@ -250,6 +356,15 @@ static void freeObject(Object *object) {
             FREE(ObjectString, object);
             break;
         }
+        case OBJECT_FUNCTION: {
+            ObjectFunction *function = (ObjectFunction *) object;
+            freeChunk(&function->chunk);
+            FREE(ObjectFunction, object);
+            break;
+        }
+        case OBJECT_NATIVE:
+            FREE(ObjectNative, object);
+            break;
     }
 }
 
@@ -270,6 +385,7 @@ void initVM() {
     vm.objects = NULL;
     initTable(&vm.strings);
     initTable(&vm.globals);
+    defineNative("clock", clockNative);
 }
 
 void freeVM() {
@@ -279,23 +395,20 @@ void freeVM() {
 }
 
 InterpretResult interpret(const char *source) {
-    Chunk chunk;
-    initChunk(&chunk);
-
     dbg("Start Compile");
-    if (!compile(source, &chunk)) {
-        freeChunk(&chunk);
+    ObjectFunction *function = compile(source);
+    dbg("Success Compile");
+    if (function == NULL) {
         return INTERPRET_COMPILE_ERROR;
     }
-    dbg("Success Compile");
-    vm.chunk = &chunk;
-    vm.ip = vm.chunk->code;
+
+    push(OBJECT_VAL(function));
+    call(function, 0);
 
     dbg("Start Run");
     InterpretResult result = run();
     dbg("End Run");
 
-    freeChunk(&chunk);
     return result;
 }
 

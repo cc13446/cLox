@@ -7,6 +7,7 @@
 
 #include "chunk.h"
 #include "scanner.h"
+#include "object.h"
 
 /**
  * 解析器
@@ -27,9 +28,22 @@ typedef struct {
 } Local;
 
 /**
+ * 函数类型
+ */
+typedef enum {
+    TYPE_FUNCTION,
+    TYPE_SCRIPT
+} FunctionType;
+
+/**
  * 编译器
  */
-typedef struct {
+typedef struct Compiler {
+    struct Compiler* enclosing;
+
+    ObjectFunction* function;
+    FunctionType type;
+
     Local locals[UINT8_COUNT];
     int localCount;
     int scopeDepth;
@@ -69,7 +83,8 @@ typedef struct {
 /**
  * 编译
  * @param source
+ * @return
  */
-bool compile(const char *source, Chunk *chunk);
+ObjectFunction* compile(const char *source);
 
 #endif //CLOX_COMPILER_H

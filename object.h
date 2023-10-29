@@ -7,32 +7,53 @@
 
 #include "common.h"
 #include "value.h"
+#include "chunk.h"
 
 #define OBJECT_TYPE(value)     (AS_OBJECT(value)->type)
 
 #define IS_STRING(value)       isObjectType(value, OBJECT_STRING)
+#define IS_FUNCTION(value)     isObjectType(value, OBJECT_FUNCTION)
+#define IS_NATIVE(value)       isObjectType(value, OBJECT_NATIVE)
 
 #define AS_STRING(value)       ((ObjectString*)AS_OBJECT(value))
 #define AS_CSTRING(value)      (((ObjectString*)AS_OBJECT(value))->chars)
+#define AS_FUNCTION(value)     ((ObjectFunction*)AS_OBJECT(value))
+#define AS_NATIVE(value)       (((ObjectNative*)AS_OBJECT(value))->function)
 
 /**
  * 对象类型
  */
 typedef enum {
     OBJECT_STRING,
+    OBJECT_FUNCTION,
+    OBJECT_NATIVE
 } ObjectType;
 
 struct Object {
     ObjectType type;
-    struct Object* next;  // 用于内存释放
+    struct Object *next;  // 用于内存释放
 };
+
+typedef Value (*NativeFn)(int argCount, Value *args);
+
+typedef struct {
+    ObjectType obj;
+    NativeFn function;
+} ObjectNative;
 
 struct ObjectString {
     Object object;
     int length;
-    char* chars;
+    char *chars;
     uint32_t hash;
 };
+
+typedef struct {
+    Object object;
+    int arity;
+    Chunk chunk;
+    ObjectString *name;
+} ObjectFunction;
 
 /**
  * 为什么不是放在宏里？
@@ -49,13 +70,15 @@ static inline bool isObjectType(Value value, ObjectType type) {
     return IS_OBJECT(value) && AS_OBJECT(value)->type == type;
 }
 
+// ==================== 字符串对象 ====================
+
 /**
  * 复制出来一个字符串对象
  * @param chars
  * @param length
  * @return
  */
-ObjectString* copyString(const char* chars, int length);
+ObjectString *copyString(const char *chars, int length);
 
 
 /**
@@ -64,12 +87,26 @@ ObjectString* copyString(const char* chars, int length);
  * @param length
  * @return
  */
-ObjectString* takeString(char* chars, int length);
+ObjectString *takeString(char *chars, int length);
 
 /**
  * 打印对象
  * @param value
  */
 void printObject(Value value);
+
+// ==================== 函数对象 ====================
+/**
+ * 新建函数对象
+ * @return
+ */
+ObjectFunction *newFunction();
+
+/**
+ * 新建本地函数对象
+ * @param function
+ * @return
+ */
+ObjectNative *newNative(NativeFn function);
 
 #endif //CLOX_OBJECT_H

@@ -56,6 +56,18 @@ static uint32_t hashString(const char *key, int length) {
     return hash;
 }
 
+/**
+ * 打印函数
+ * @param function
+ */
+static void printFunction(ObjectFunction *function) {
+    if (function->name == NULL) {
+        printf("<script>");
+        return;
+    }
+    printf("<fn %s>", function->name->chars);
+}
+
 ObjectString *copyString(const char *chars, int length) {
     uint32_t hash = hashString(chars, length);
     ObjectString *interned = findSting(chars, length, hash);
@@ -83,5 +95,25 @@ void printObject(Value value) {
         case OBJECT_STRING:
             printf("%s", AS_CSTRING(value));
             break;
+        case OBJECT_FUNCTION:
+            printFunction(AS_FUNCTION(value));
+            break;
+        case OBJECT_NATIVE:
+            printf("<native fn>");
+            break;
     }
+}
+
+ObjectFunction *newFunction() {
+    ObjectFunction *function = ALLOCATE_OBJECT(ObjectFunction, OBJECT_FUNCTION);
+    function->arity = 0;
+    function->name = NULL;
+    initChunk(&function->chunk);
+    return function;
+}
+
+ObjectNative* newNative(NativeFn function) {
+    ObjectNative* native = ALLOCATE_OBJECT(ObjectNative, OBJECT_NATIVE);
+    native->function = function;
+    return native;
 }

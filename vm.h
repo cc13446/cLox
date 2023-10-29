@@ -5,21 +5,32 @@
 #ifndef CLOX_VM_H
 #define CLOX_VM_H
 
-#define STACK_MAX 256
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
 #include "chunk.h"
 #include "value.h"
 #include "table.h"
+#include "object.h"
+
+/**
+ * 调用栈
+ */
+typedef struct {
+    ObjectFunction *function;
+    uint8_t *ip;
+    Value *slots;
+} CallFrame;
 
 /**
  * 虚拟机
  */
 typedef struct {
-    Chunk *chunk;
-    uint8_t *ip;            // 记录字节码的位置
+    CallFrame frames[FRAMES_MAX]; // 调用栈
+    int frameCount;
     Value stack[STACK_MAX]; // 虚拟机栈
     Value *stackTop;        // 虚拟机栈顶
-    Object * objects;       // 所有对象的链表
+    Object *objects;        // 所有对象的链表
     Table strings;          // 字符串常量池
     Table globals;          // 全局变量
 } VM;
@@ -48,7 +59,7 @@ void freeVM();
  * @param chunk
  * @return
  */
-InterpretResult interpret(const char* source);
+InterpretResult interpret(const char *source);
 
 /**
  * 入栈
@@ -73,7 +84,7 @@ Value peek(int distance);
  * 添加一个堆对象，用于内存释放
  * @param object
  */
-void addObject(Object* object);
+void addObject(Object *object);
 
 /**
  * 将字符串存入常量池
