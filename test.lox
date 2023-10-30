@@ -1,8 +1,6 @@
-fun a(a1) {
-    fun b(b1) {
-        return a1 + b1;
-    }
-    return b;
-}
+class Pair {}
 
-print a(1)(2);
+var pair = Pair();
+pair.first = 1;
+pair.second = 2;
+print pair.first + pair.second;

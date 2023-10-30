@@ -8,6 +8,7 @@
 #include "common.h"
 #include "value.h"
 #include "chunk.h"
+#include "table.h"
 
 #define OBJECT_TYPE(value)     (AS_OBJECT(value)->type)
 
@@ -15,12 +16,16 @@
 #define IS_FUNCTION(value)     isObjectType(value, OBJECT_FUNCTION)
 #define IS_NATIVE(value)       isObjectType(value, OBJECT_NATIVE)
 #define IS_CLOSURE(value)      isObjectType(value, OBJECT_CLOSURE)
+#define IS_CLASS(value)        isObjectType(value, OBJECT_CLASS)
+#define IS_INSTANCE(value)     isObjectType(value, OBJECT_INSTANCE)
 
 #define AS_STRING(value)       ((ObjectString*)AS_OBJECT(value))
 #define AS_CSTRING(value)      (((ObjectString*)AS_OBJECT(value))->chars)
 #define AS_FUNCTION(value)     ((ObjectFunction*)AS_OBJECT(value))
 #define AS_NATIVE(value)       (((ObjectNative*)AS_OBJECT(value))->function)
 #define AS_CLOSURE(value)      ((ObjectClosure*)AS_OBJECT(value))
+#define AS_CLASS(value)        ((ObjectClass*)AS_OBJECT(value))
+#define AS_INSTANCE(value)     ((ObjectInstance*)AS_OBJECT(value))
 
 /**
  * 对象类型
@@ -30,7 +35,9 @@ typedef enum {
     OBJECT_FUNCTION,
     OBJECT_NATIVE,
     OBJECT_CLOSURE,
-    OBJECT_UP_VALUE
+    OBJECT_UP_VALUE,
+    OBJECT_CLASS,
+    OBJECT_INSTANCE,
 } ObjectType;
 
 struct Object {
@@ -65,7 +72,7 @@ typedef struct ObjectUpValue {
     Object object;
     Value *location;
     Value closed;
-    struct ObjectUpValue* next;
+    struct ObjectUpValue *next;
 } ObjectUpValue;
 
 typedef struct {
@@ -74,6 +81,17 @@ typedef struct {
     ObjectUpValue **upValues;
     int upValueCount;
 } ObjectClosure;
+
+typedef struct {
+    Object obj;
+    ObjectString *name;
+} ObjectClass;
+
+typedef struct {
+    Object obj;
+    ObjectClass *klass;
+    Table fields;
+} ObjectInstance;
 
 /**
  * 为什么不是放在宏里？
@@ -142,5 +160,19 @@ ObjectClosure *newClosure(ObjectFunction *function);
  * @return
  */
 ObjectUpValue *newUpValue(Value *slot);
+
+/**
+ * 新建类
+ * @param name
+ * @return
+ */
+ObjectClass *newClass(ObjectString *name);
+
+/**
+ * 新建实例
+ * @param klass
+ * @return
+ */
+ObjectInstance* newInstance(ObjectClass* klass);
 
 #endif //CLOX_OBJECT_H

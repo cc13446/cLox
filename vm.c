@@ -88,8 +88,8 @@ static bool isFalse(Value value) {
  * 合并字符串
  */
 static void concatString() {
-    ObjectString* b = AS_STRING(peek(0));
-    ObjectString* a = AS_STRING(peek(1));
+    ObjectString *b = AS_STRING(peek(0));
+    ObjectString *a = AS_STRING(peek(1));
 
     int length = a->length + b->length;
     char *chars = ALLOCATE(char, length + 1);
@@ -140,6 +140,11 @@ static bool call(ObjectClosure *closure, int argCount) {
 static bool callValue(Value callee, int argCount) {
     if (IS_OBJECT(callee)) {
         switch (OBJECT_TYPE(callee)) {
+            case OBJECT_CLASS: {
+                ObjectClass *klass = AS_CLASS(callee);
+                vm.stackTop[-argCount - 1] = OBJECT_VAL(newInstance(klass));
+                return true;
+            }
             case OBJECT_CLOSURE:
                 return call(AS_CLOSURE(callee), argCount);
             case OBJECT_NATIVE: {
@@ -309,6 +314,36 @@ static InterpretResult run() {
                 *frame->closure->upValues[slot]->location = peek(0);
                 break;
             }
+            case OP_GET_PROPERTY: {
+                if (!IS_INSTANCE(peek(0))) {
+                    runtimeError("Only instances have properties.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjectInstance *instance = AS_INSTANCE(peek(0));
+                ObjectString *name = READ_STRING();
+
+                Value value;
+                if (tableGet(&instance->fields, name, &value)) {
+                    pop(); // Instance.
+                    push(value);
+                    break;
+                }
+                runtimeError("Undefined property '%s'.", name->chars);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            case OP_SET_PROPERTY: {
+                if (!IS_INSTANCE(peek(1))) {
+                    runtimeError("Only instances have fields.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                ObjectInstance *instance = AS_INSTANCE(peek(1));
+                tableSet(&instance->fields, READ_STRING(), peek(0));
+                Value value = pop();
+                pop();
+                push(value);
+                break;
+            }
             case OP_EQUAL: {
                 Value b = pop();
                 Value a = pop();
@@ -414,6 +449,9 @@ static InterpretResult run() {
                 // 此时这个局部变量已经被闭包捕捉了
                 closeUpValues(vm.stackTop - 1);
                 pop();
+                break;
+            case OP_CLASS:
+                push(OBJECT_VAL(newClass(READ_STRING())));
                 break;
         }
     }
@@ -591,6 +629,6 @@ size_t getNextGC() {
     return vm.nextGC;
 }
 
-void freshNextGC(){
+void freshNextGC() {
     vm.nextGC = vm.bytesAllocated * GC_HEAP_GROW_FACTOR;
 }

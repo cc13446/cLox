@@ -96,6 +96,9 @@ ObjectString *takeString(char *chars, int length) {
 
 void printObject(Value value) {
     switch (OBJECT_TYPE(value)) {
+        case OBJECT_INSTANCE:
+            printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
+            break;
         case OBJECT_STRING:
             printf("%s", AS_CSTRING(value));
             break;
@@ -110,6 +113,9 @@ void printObject(Value value) {
             break;
         case OBJECT_UP_VALUE:
             printf("upValue");
+            break;
+        case OBJECT_CLASS:
+            printf("%s", AS_CLASS(value)->name->chars);
             break;
     }
 }
@@ -147,4 +153,17 @@ ObjectUpValue *newUpValue(Value *slot) {
     upValue->location = slot;
     upValue->next = NULL;
     return upValue;
+}
+
+ObjectClass *newClass(ObjectString *name) {
+    ObjectClass *klass = ALLOCATE_OBJECT(ObjectClass, OBJECT_CLASS);
+    klass->name = name;
+    return klass;
+}
+
+ObjectInstance *newInstance(ObjectClass *klass) {
+    ObjectInstance *instance = ALLOCATE_OBJECT(ObjectInstance, OBJECT_INSTANCE);
+    instance->klass = klass;
+    initTable(&instance->fields);
+    return instance;
 }

@@ -39,6 +39,12 @@ void freeObject(Object *object) {
     printf("%p free type %d\n", (void *) object, object->type);
 #endif
     switch (object->type) {
+        case OBJECT_INSTANCE: {
+            ObjectInstance *instance = (ObjectInstance *) object;
+            freeTable(&instance->fields);
+            FREE(ObjectInstance, object);
+            break;
+        }
         case OBJECT_STRING: {
             ObjectString *string = (ObjectString *) object;
             dbg("Free Memory of Object String %s", string->chars);
@@ -64,6 +70,10 @@ void freeObject(Object *object) {
         case OBJECT_UP_VALUE:
             FREE(ObjectUpValue, object);
             break;
+        case OBJECT_CLASS: {
+            FREE(ObjectClass, object);
+            break;
+        }
     }
 }
 
@@ -123,6 +133,17 @@ void blackenObject(Object *object) {
     printf("\n");
 #endif
     switch (object->type) {
+        case OBJECT_INSTANCE: {
+            ObjectInstance *instance = (ObjectInstance *) object;
+            markObject((Object *) instance->klass);
+            markTable(&instance->fields);
+            break;
+        }
+        case OBJECT_CLASS: {
+            ObjectClass *klass = (ObjectClass *) object;
+            markObject((Object *) klass->name);
+            break;
+        }
         case OBJECT_CLOSURE: {
             ObjectClosure *closure = (ObjectClosure *) object;
             markObject((Object *) closure->function);

@@ -315,6 +315,12 @@ static void binary(bool canAssign);
 static void call(bool canAssign);
 
 /**
+ * 点号表达式
+ * @param canAssign
+ */
+static void dot(bool canAssign);
+
+/**
  * 括号分组表达式
  */
 static void grouping(bool canAssign);
@@ -393,6 +399,11 @@ static void functionStatement(FunctionType type);
 static void declaration();
 
 /**
+ * 类声明
+ */
+static void classDeclaration();
+
+/**
  * 变量声明
  */
 static void varDeclaration();
@@ -408,7 +419,7 @@ ParseRule rules[] = {
         [TOKEN_LEFT_BRACE]    = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_RIGHT_BRACE]   = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_COMMA]         = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_DOT]           = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_DOT]           = {NULL, dot, PRECEDENCE_CALL},
         [TOKEN_MINUS]         = {unary, binary, PRECEDENCE_TERM},
         [TOKEN_PLUS]          = {NULL, binary, PRECEDENCE_TERM},
         [TOKEN_SEMICOLON]     = {NULL, NULL, PRECEDENCE_NONE},
@@ -828,6 +839,18 @@ static void call(bool canAssign) {
     emitBytes(OP_CALL, argCount);
 }
 
+static void dot(bool canAssign) {
+    consumeAndNext(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+    uint8_t name = identifierConstant(&parser.previous);
+
+    if (canAssign && matchAndNext(TOKEN_EQUAL)) {
+        expression();
+        emitBytes(OP_SET_PROPERTY, name);
+    } else {
+        emitBytes(OP_GET_PROPERTY, name);
+    }
+}
+
 static void grouping(bool canAssign) {
     expression();
     consumeAndNext(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
@@ -1050,7 +1073,9 @@ static void functionStatement(FunctionType type) {
 }
 
 static void declaration() {
-    if (matchAndNext(TOKEN_FUN)) {
+    if (matchAndNext(TOKEN_CLASS)) {
+        classDeclaration();
+    } else if (matchAndNext(TOKEN_FUN)) {
         funDeclaration();
     } else if (matchAndNext(TOKEN_VAR)) {
         varDeclaration();
@@ -1060,6 +1085,18 @@ static void declaration() {
     if (parser.panicMode) {
         synchronize();
     }
+}
+
+static void classDeclaration() {
+    consumeAndNext(TOKEN_IDENTIFIER, "Expect class name.");
+    uint8_t nameConstant = identifierConstant(&parser.previous);
+    declareVariable();
+
+    emitBytes(OP_CLASS, nameConstant);
+    defineVariable(nameConstant);
+
+    consumeAndNext(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+    consumeAndNext(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
 }
 
 static void funDeclaration() {
