@@ -58,6 +58,18 @@ static Chunk *getCurrentChunk() {
     return &currentCompiler->function->chunk;
 }
 
+/**
+ * 一个新Token
+ * @param text
+ * @return
+ */
+static Token syntheticToken(const char *text) {
+    Token token;
+    token.start = text;
+    token.length = (int) strlen(text);
+    return token;
+}
+
 // ========================== AST 解析部分 ==========================
 
 /**
@@ -325,6 +337,12 @@ static void binary(bool canAssign);
 static void this(bool canAssign);
 
 /**
+ * super
+ * @param canAssign
+ */
+static void super(bool canAssign);
+
+/**
  * 函数调用表达式
  * @param canAssign
  */
@@ -468,7 +486,7 @@ ParseRule rules[] = {
         [TOKEN_OR]            = {NULL, or, PRECEDENCE_NONE},
         [TOKEN_PRINT]         = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_RETURN]        = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_SUPER]         = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_SUPER]         = {super, NULL, PRECEDENCE_NONE},
         [TOKEN_THIS]          = {this, NULL, PRECEDENCE_NONE},
         [TOKEN_TRUE]          = {literal, NULL, PRECEDENCE_NONE},
         [TOKEN_VAR]           = {NULL, NULL, PRECEDENCE_NONE},
@@ -863,6 +881,30 @@ static void this(bool canAssign) {
     variable(false);
 }
 
+static void super(bool canAssign) {
+    if (currentClass == NULL) {
+        errorAtPrevious("Can't use 'super' outside of a class.");
+    } else if (!currentClass->hasSuperclass) {
+        errorAtPrevious("Can't use 'super' in a class with no superclass.");
+    }
+
+    consumeAndNext(TOKEN_DOT, "Expect '.' after 'super'.");
+    consumeAndNext(TOKEN_IDENTIFIER, "Expect superclass method name.");
+    uint8_t name = identifierConstant(&parser.previous);
+    // 获取自己
+    namedVariable(syntheticToken("this"), false);
+    // 获取超类
+    if (matchAndNext(TOKEN_LEFT_PAREN)) {
+        uint8_t argCount = argumentList();
+        namedVariable(syntheticToken("super"), false);
+        emitBytes(OP_SUPER_INVOKE, name);
+        emitByte(argCount);
+    } else {
+        namedVariable(syntheticToken("super"), false);
+        emitBytes(OP_GET_SUPER, name);
+    }
+}
+
 static void call(bool canAssign) {
     uint8_t argCount = argumentList();
     emitBytes(OP_CALL, argCount);
@@ -1134,8 +1176,27 @@ static void classDeclaration() {
     defineVariable(nameConstant);
 
     ClassCompiler classCompiler;
+    classCompiler.hasSuperclass = false;
     classCompiler.enclosing = currentClass;
     currentClass = &classCompiler;
+
+    // 父类
+    if (matchAndNext(TOKEN_LESS)) {
+        consumeAndNext(TOKEN_IDENTIFIER, "Expect superclass name.");
+        variable(false);
+        if (identifiersEqual(&className, &parser.previous)) {
+            errorAtPrevious("A class can't inherit from itself.");
+        }
+        // 超类放在上值系统中
+        // 新作用域避免两个类的super冲突
+        beginScope();
+        addLocal(syntheticToken("super"));
+        defineVariable(0);
+
+        namedVariable(className, false);
+        emitByte(OP_INHERIT);
+        classCompiler.hasSuperclass = true;
+    }
 
     // 将类加载回到栈顶
     namedVariable(className, false);
@@ -1146,6 +1207,9 @@ static void classDeclaration() {
     consumeAndNext(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
     emitByte(OP_POP);
 
+    if (classCompiler.hasSuperclass) {
+        endScope();
+    }
     currentClass = currentClass->enclosing;
 }
 
