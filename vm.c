@@ -2,6 +2,7 @@
 // Created by chen chen on 2023/10/25.
 //
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
@@ -87,8 +88,8 @@ static bool isFalse(Value value) {
  * 合并字符串
  */
 static void concatString() {
-    ObjectString *b = AS_STRING(pop());
-    ObjectString *a = AS_STRING(pop());
+    ObjectString* b = AS_STRING(peek(0));
+    ObjectString* a = AS_STRING(peek(1));
 
     int length = a->length + b->length;
     char *chars = ALLOCATE(char, length + 1);
@@ -97,6 +98,9 @@ static void concatString() {
     chars[length] = '\0';
 
     ObjectString *result = takeString(chars, length);
+
+    pop();
+    pop();
     push(OBJECT_VAL(result));
 }
 
@@ -422,39 +426,6 @@ static InterpretResult run() {
 }
 
 /**
- * 释放对象
- */
-static void freeObject(Object *object) {
-    switch (object->type) {
-        case OBJECT_STRING: {
-            ObjectString *string = (ObjectString *) object;
-            dbg("Free Memory of Object String %s", string->chars);
-            FREE_ARRAY(char, string->chars, string->length + 1);
-            FREE(ObjectString, object);
-            break;
-        }
-        case OBJECT_FUNCTION: {
-            ObjectFunction *function = (ObjectFunction *) object;
-            freeChunk(&function->chunk);
-            FREE(ObjectFunction, object);
-            break;
-        }
-        case OBJECT_NATIVE:
-            FREE(ObjectNative, object);
-            break;
-        case OBJECT_CLOSURE: {
-            ObjectClosure *closure = (ObjectClosure *) object;
-            FREE_ARRAY(ObjectUpValue *, closure->upValues, closure->upValueCount);
-            FREE(ObjectClosure, object);
-            break;
-        }
-        case OBJECT_UP_VALUE:
-            FREE(ObjectUpValue, object);
-            break;
-    }
-}
-
-/**
  * 释放所有对象
  */
 static void freeObjects() {
@@ -464,11 +435,20 @@ static void freeObjects() {
         freeObject(object);
         object = next;
     }
+    free(vm.grayStack);
 }
 
 void initVM() {
     resetStack();
     vm.objects = NULL;
+
+    vm.bytesAllocated = 0;
+    vm.nextGC = 1024 * 1024;
+
+    vm.grayCount = 0;
+    vm.grayCapacity = 0;
+    vm.grayStack = NULL;
+
     initTable(&vm.strings);
     initTable(&vm.globals);
     defineNative("clock", clockNative);
@@ -521,10 +501,96 @@ void addObject(Object *object) {
 }
 
 void holdString(ObjectString *string) {
+    // 避免字符串被GC回收
+    push(OBJECT_VAL(string));
     tableSet(&vm.strings, string, NIL_VAL);
+    pop();
 }
 
 ObjectString *findSting(const char *chars, int length, u_int32_t hash) {
     return tableFindKey(&vm.strings, chars, length, hash);
 }
 
+void markRoots() {
+    // 栈中局部变量
+    for (Value *slot = vm.stack; slot < vm.stackTop; slot++) {
+        markValue(*slot);
+    }
+    // 调用栈
+    for (int i = 0; i < vm.frameCount; i++) {
+        markObject((Object *) vm.frames[i].closure);
+    }
+    // 上值
+    for (ObjectUpValue *upValue = vm.openUpValues;
+         upValue != NULL;
+         upValue = upValue->next) {
+        markObject((Object *) upValue);
+    }
+    // 全局变量
+    markTable(&vm.globals);
+    // 编译器：函数
+    markCompilerRoots();
+}
+
+void addGray(Object *object) {
+    if (vm.grayCapacity < vm.grayCount + 1) {
+        vm.grayCapacity = GROW_CAPACITY(vm.grayCapacity);
+        vm.grayStack = (Object **) realloc(vm.grayStack, sizeof(Object *) * vm.grayCapacity);
+        if (vm.grayStack == NULL) {
+            dbg("Error when realloc new grayStack");
+            exit(1);
+        }
+    }
+
+    vm.grayStack[vm.grayCount++] = object;
+}
+
+void traceReferences() {
+    while (vm.grayCount > 0) {
+        Object *object = vm.grayStack[--vm.grayCount];
+        blackenObject(object);
+    }
+}
+
+void sweepStrings() {
+    tableRemoveWhite(&vm.strings);
+}
+
+void sweep() {
+    Object *previous = NULL;
+    Object *object = vm.objects;
+    while (object != NULL) {
+        if (object->isMarked) {
+            object->isMarked = false;
+            previous = object;
+            object = object->next;
+        } else {
+            Object *unreached = object;
+            object = object->next;
+            if (previous != NULL) {
+                previous->next = object;
+            } else {
+                vm.objects = object;
+            }
+
+            freeObject(unreached);
+        }
+    }
+}
+
+bool addBytesAllocated(size_t diff) {
+    vm.bytesAllocated += diff;
+    return vm.bytesAllocated > vm.nextGC;
+}
+
+size_t getBytesAllocated() {
+    return vm.bytesAllocated;
+}
+
+size_t getNextGC() {
+    return vm.nextGC;
+}
+
+void freshNextGC(){
+    vm.nextGC = vm.bytesAllocated * GC_HEAP_GROW_FACTOR;
+}

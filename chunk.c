@@ -5,6 +5,7 @@
 #include "chunk.h"
 #include "debug.h"
 #include "memory.h"
+#include "vm.h"
 
 
 void initChunk(Chunk *chunk) {
@@ -39,7 +40,10 @@ void writeChunk(Chunk *chunk, uint8_t byte, int line) {
 }
 
 int addConstant(Chunk* chunk, Value value) {
+    // 避免GC将常量回收
+    push(value);
     writeValueArray(&chunk->constants, value);
     dbgValue(value, "Add Value To Chunk INDEX [%d], Value : ", chunk->constants.size - 1);
+    pop();
     return chunk->constants.size - 1;
 }

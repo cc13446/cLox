@@ -74,4 +74,17 @@ void tableAddAll(Table *from, Table *to);
  */
 ObjectString* tableFindKey(Table* table, const char* chars, int length, uint32_t hash);
 
+/**
+ * GC 标记 table
+ * @param table
+ */
+void markTable(Table* table);
+
+/**
+ * 清理哈希表
+ * 这里不能依靠GC，因为要保证哈希表的正确性
+ * @param table
+ */
+void tableRemoveWhite(Table* table);
+
 #endif //CLOX_TABLE_H

@@ -11,6 +11,7 @@
 #include "scanner.h"
 #include "debug.h"
 #include "object.h"
+#include "memory.h"
 
 Parser parser;
 Compiler *currentCompiler;
@@ -1097,4 +1098,13 @@ ObjectFunction *compile(const char *source) {
 
     ObjectFunction *function = endCompiler();
     return parser.hadError ? NULL : function;
+}
+
+void markCompilerRoots() {
+    Compiler *compiler = currentCompiler;
+    // 所有函数
+    while (compiler != NULL) {
+        markObject((Object *) compiler->function);
+        compiler = compiler->enclosing;
+    }
 }

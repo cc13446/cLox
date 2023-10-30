@@ -97,4 +97,9 @@ typedef struct {
  */
 ObjectFunction* compile(const char *source);
 
+/**
+ * 标记编译器根
+ */
+void markCompilerRoots();
+
 #endif //CLOX_COMPILER_H

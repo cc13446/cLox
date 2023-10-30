@@ -38,7 +38,7 @@ void addKeyWord(const char *word, TokenType type) {
     Trie *t = &trie;
     while (*cur != '\0') {
         if (t->node == NULL) {
-            t->node = ALLOCATE(Trie, TRIE_MAX_LENGTH);
+            t->node = (Trie *) malloc(sizeof(Trie) * TRIE_MAX_LENGTH);
             Trie *n = t->node;
             for (int i = 0; i < TRIE_MAX_LENGTH; i++, n++) {
                 n->node = NULL;
@@ -80,7 +80,7 @@ static void doFreeTrie(Trie *t) {
     for (int i = 0; i < TRIE_MAX_LENGTH; i++, node++) {
         doFreeTrie(node);
     }
-    FREE_ARRAY(Trie, t->node, TRIE_MAX_LENGTH);
+    free(t->node);
 }
 
 void freeTrie() {

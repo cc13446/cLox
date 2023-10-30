@@ -35,13 +35,14 @@ typedef enum {
 
 struct Object {
     ObjectType type;
-    struct Object *next;  // 用于内存释放
+    struct Object *next;    // 用于内存释放
+    bool isMarked;          // 用于GC
 };
 
 typedef Value (*NativeFn)(int argCount, Value *args);
 
 typedef struct {
-    ObjectType obj;
+    Object object;
     NativeFn function;
 } ObjectNative;
 

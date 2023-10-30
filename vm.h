@@ -17,7 +17,7 @@
  * 调用栈
  */
 typedef struct {
-    ObjectClosure* closure;
+    ObjectClosure *closure;
     uint8_t *ip;
     Value *slots;
 } CallFrame;
@@ -33,7 +33,14 @@ typedef struct {
     Object *objects;                // 所有对象的链表
     Table strings;                  // 字符串常量池
     Table globals;                  // 全局变量
-    ObjectUpValue* openUpValues;    // 被关闭的上值
+    ObjectUpValue *openUpValues;    // 被关闭的上值
+
+    int grayCount;
+    int grayCapacity;
+    Object **grayStack;
+
+    size_t bytesAllocated;
+    size_t nextGC;
 } VM;
 
 /**
@@ -98,5 +105,53 @@ void holdString(ObjectString *string);
  * @param string
  */
 ObjectString *findSting(const char *chars, int length, u_int32_t hash);
+
+/**
+ * 扫描根节点
+ */
+void markRoots();
+
+/**
+ * 添加灰色节点
+ */
+void addGray(Object *object);
+
+/**
+ * 跟踪引用
+ */
+void traceReferences();
+
+/**
+ * 清除字符串常量池
+ */
+void sweepStrings();
+
+/**
+ * 清除对象
+ */
+void sweep();
+
+/**
+ * 统计字节码
+ * @param diff
+ */
+bool addBytesAllocated(size_t diff);
+
+/**
+ * 更新GC阈值
+ */
+void freshNextGC();
+
+/**
+ * 获取分配的字节码
+ * @return
+ */
+size_t getBytesAllocated();
+
+/**
+ * 获取下一次触发GC的字节数
+ * @return
+ */
+size_t getNextGC();
 
 #endif //CLOX_VM_H
