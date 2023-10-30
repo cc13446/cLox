@@ -41,9 +41,11 @@ typedef enum {
     OP_JUMP_IF_FALSE,
     OP_LOOP,
     OP_CALL,
+    OP_INVOKE,
     OP_CLOSURE,
     OP_CLOSE_UP_VALUE,
     OP_CLASS,
+    OP_METHOD,
     OP_RETURN
 } OpCode;
 
@@ -54,7 +56,7 @@ typedef struct {
     int size;
     int capacity;
     uint8_t *code;
-    int* lines;
+    int *lines;
     ValueArray constants;
 } Chunk;
 
@@ -68,7 +70,7 @@ void initChunk(Chunk *chunk);
  * 释放动态数组
  * @param chunk
  */
-void freeChunk(Chunk* chunk);
+void freeChunk(Chunk *chunk);
 
 /**
  * 写入动态数组
@@ -83,6 +85,6 @@ void writeChunk(Chunk *chunk, uint8_t byte, int line);
  * @param value
  * @return
  */
-int addConstant(Chunk* chunk, Value value);
+int addConstant(Chunk *chunk, Value value);
 
 #endif //CLOX_CHUNK_H

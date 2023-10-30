@@ -15,6 +15,7 @@
 
 Parser parser;
 Compiler *currentCompiler;
+ClassCompiler *currentClass = NULL;
 
 /**
  * 初始化编译器
@@ -36,12 +37,17 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
         currentCompiler->function->name = copyString(parser.previous.start, parser.previous.length);
     }
 
-    // 默认第零个自己用
+    // 默认第零个自己用，方法用这个槽存放this
     Local *local = &currentCompiler->locals[currentCompiler->localCount++];
     local->depth = 0;
-    local->name.start = "";
-    local->name.length = 0;
     local->isCaptured = false;
+    if (type == TYPE_METHOD || type == TYPE_INITIALIZER) {
+        local->name.start = "this";
+        local->name.length = 4;
+    } else {
+        local->name.start = "";
+        local->name.length = 0;
+    }
 }
 
 /**
@@ -198,7 +204,11 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
  * @param byte
  */
 static void emitReturn() {
-    emitByte(OP_NIL);
+    if (currentCompiler->type == TYPE_INITIALIZER) {
+        emitBytes(OP_GET_LOCAL, 0);
+    } else {
+        emitByte(OP_NIL);
+    }
     emitByte(OP_RETURN);
 }
 
@@ -309,6 +319,12 @@ static void unary(bool canAssign);
 static void binary(bool canAssign);
 
 /**
+ * this
+ * @param canAssign
+ */
+static void this(bool canAssign);
+
+/**
  * 函数调用表达式
  * @param canAssign
  */
@@ -404,6 +420,11 @@ static void declaration();
 static void classDeclaration();
 
 /**
+ * 方法
+ */
+static void methodDeclaration();
+
+/**
  * 变量声明
  */
 static void varDeclaration();
@@ -448,7 +469,7 @@ ParseRule rules[] = {
         [TOKEN_PRINT]         = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_RETURN]        = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_SUPER]         = {NULL, NULL, PRECEDENCE_NONE},
-        [TOKEN_THIS]          = {NULL, NULL, PRECEDENCE_NONE},
+        [TOKEN_THIS]          = {this, NULL, PRECEDENCE_NONE},
         [TOKEN_TRUE]          = {literal, NULL, PRECEDENCE_NONE},
         [TOKEN_VAR]           = {NULL, NULL, PRECEDENCE_NONE},
         [TOKEN_WHILE]         = {NULL, NULL, PRECEDENCE_NONE},
@@ -834,6 +855,14 @@ static void binary(bool canAssign) {
     }
 }
 
+static void this(bool canAssign) {
+    if (currentClass == NULL) {
+        errorAtPrevious("Can't use 'this' outside of a class.");
+        return;
+    }
+    variable(false);
+}
+
 static void call(bool canAssign) {
     uint8_t argCount = argumentList();
     emitBytes(OP_CALL, argCount);
@@ -846,6 +875,10 @@ static void dot(bool canAssign) {
     if (canAssign && matchAndNext(TOKEN_EQUAL)) {
         expression();
         emitBytes(OP_SET_PROPERTY, name);
+    } else if (matchAndNext(TOKEN_LEFT_PAREN)) {
+        uint8_t argCount = argumentList();
+        emitBytes(OP_INVOKE, name);
+        emitByte(argCount);
     } else {
         emitBytes(OP_GET_PROPERTY, name);
     }
@@ -922,6 +955,9 @@ static void returnStatement() {
     } else {
         if (currentCompiler->type == TYPE_SCRIPT) {
             errorAtPrevious("Can't return value from top-level code.");
+        }
+        if (currentCompiler->type == TYPE_INITIALIZER) {
+            errorAtPrevious("Can't return a value from an initializer.");
         }
         expression();
         consumeAndNext(TOKEN_SEMICOLON, "Expect ';' after return value.");
@@ -1089,14 +1125,46 @@ static void declaration() {
 
 static void classDeclaration() {
     consumeAndNext(TOKEN_IDENTIFIER, "Expect class name.");
+    Token className = parser.previous;
+
     uint8_t nameConstant = identifierConstant(&parser.previous);
     declareVariable();
 
     emitBytes(OP_CLASS, nameConstant);
     defineVariable(nameConstant);
 
+    ClassCompiler classCompiler;
+    classCompiler.enclosing = currentClass;
+    currentClass = &classCompiler;
+
+    // 将类加载回到栈顶
+    namedVariable(className, false);
     consumeAndNext(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+    while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+        methodDeclaration();
+    }
     consumeAndNext(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+    emitByte(OP_POP);
+
+    currentClass = currentClass->enclosing;
+}
+
+
+static void methodDeclaration() {
+
+    // 方法名称
+    consumeAndNext(TOKEN_IDENTIFIER, "Expect method name.");
+    uint8_t constant = identifierConstant(&parser.previous);
+
+    // 方法主体的闭包
+    FunctionType type = TYPE_METHOD;
+    // 初始化方法
+    if (parser.previous.length == 4 && memcmp(parser.previous.start, "init", 4) == 0) {
+        type = TYPE_INITIALIZER;
+    }
+    functionStatement(type);
+
+    emitBytes(OP_METHOD, constant);
 }
 
 static void funDeclaration() {

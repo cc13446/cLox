@@ -117,6 +117,9 @@ void printObject(Value value) {
         case OBJECT_CLASS:
             printf("%s", AS_CLASS(value)->name->chars);
             break;
+        case OBJECT_BOUND_METHOD:
+            printFunction(AS_BOUND_METHOD(value)->method->function);
+            break;
     }
 }
 
@@ -158,6 +161,7 @@ ObjectUpValue *newUpValue(Value *slot) {
 ObjectClass *newClass(ObjectString *name) {
     ObjectClass *klass = ALLOCATE_OBJECT(ObjectClass, OBJECT_CLASS);
     klass->name = name;
+    initTable(&klass->methods);
     return klass;
 }
 
@@ -166,4 +170,11 @@ ObjectInstance *newInstance(ObjectClass *klass) {
     instance->klass = klass;
     initTable(&instance->fields);
     return instance;
+}
+
+ObjectBoundMethod *newBoundMethod(Value receiver, ObjectClosure *method) {
+    ObjectBoundMethod *bound = ALLOCATE_OBJECT(ObjectBoundMethod, OBJECT_BOUND_METHOD);
+    bound->receiver = receiver;
+    bound->method = method;
+    return bound;
 }

@@ -41,16 +41,18 @@ typedef struct {
  */
 typedef enum {
     TYPE_FUNCTION,
-    TYPE_SCRIPT
+    TYPE_SCRIPT,
+    TYPE_METHOD,
+    TYPE_INITIALIZER,
 } FunctionType;
 
 /**
  * 编译器
  */
 typedef struct Compiler {
-    struct Compiler* enclosing;
+    struct Compiler *enclosing;
 
-    ObjectFunction* function;
+    ObjectFunction *function;
     FunctionType type;
     UpValue upValues[UINT8_COUNT];
 
@@ -58,6 +60,10 @@ typedef struct Compiler {
     int localCount;
     int scopeDepth;
 } Compiler;
+
+typedef struct ClassCompiler {
+    struct ClassCompiler *enclosing;
+} ClassCompiler;
 
 /**
  * 中缀运算符优先级处理
@@ -95,7 +101,7 @@ typedef struct {
  * @param source
  * @return
  */
-ObjectFunction* compile(const char *source);
+ObjectFunction *compile(const char *source);
 
 /**
  * 标记编译器根

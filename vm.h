@@ -41,6 +41,8 @@ typedef struct {
 
     size_t bytesAllocated;
     size_t nextGC;
+
+    ObjectString* initString;
 } VM;
 
 /**

@@ -140,9 +140,24 @@ static bool call(ObjectClosure *closure, int argCount) {
 static bool callValue(Value callee, int argCount) {
     if (IS_OBJECT(callee)) {
         switch (OBJECT_TYPE(callee)) {
+            case OBJECT_BOUND_METHOD: {
+                ObjectBoundMethod *bound = AS_BOUND_METHOD(callee);
+                vm.stackTop[-argCount - 1] = bound->receiver;
+                return call(bound->method, argCount);
+            }
             case OBJECT_CLASS: {
                 ObjectClass *klass = AS_CLASS(callee);
                 vm.stackTop[-argCount - 1] = OBJECT_VAL(newInstance(klass));
+
+                // 初始化函数
+                Value initializer;
+                if (tableGet(&klass->methods, vm.initString, &initializer)) {
+                    return call(AS_CLOSURE(initializer), argCount);
+                } else if (argCount != 0) {
+                    runtimeError("Expected 0 arguments but got %d.", argCount);
+                    return false;
+                }
+
                 return true;
             }
             case OBJECT_CLOSURE:
@@ -204,6 +219,74 @@ static void closeUpValues(Value *last) {
         upValue->location = &upValue->closed;
         vm.openUpValues = upValue->next;
     }
+}
+
+/**
+ * 定义方法
+ * @param name
+ */
+static void defineMethod(ObjectString *name) {
+    // 闭包
+    Value method = peek(0);
+    // 类
+    ObjectClass *klass = AS_CLASS(peek(1));
+    tableSet(&klass->methods, name, method);
+    pop();
+}
+
+/**
+ * 为方法绑定实例
+ * @param klass
+ * @param name
+ * @return
+ */
+static bool bindMethod(ObjectClass *klass, ObjectString *name) {
+    Value method;
+    if (!tableGet(&klass->methods, name, &method)) {
+        runtimeError("Undefined method '%s'.", name->chars);
+        return false;
+    }
+
+    ObjectBoundMethod *bound = newBoundMethod(peek(0), AS_CLOSURE(method));
+    pop();
+    push(OBJECT_VAL(bound));
+    return true;
+}
+
+/**
+ * 方法调用
+ * @param name
+ * @param argCount
+ * @return
+ */
+static bool invokeFromClass(ObjectClass *klass, ObjectString *name, int argCount) {
+    Value method;
+    if (!tableGet(&klass->methods, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+    return call(AS_CLOSURE(method), argCount);
+}
+
+/**
+ * 方法调用
+ * @param name
+ * @param argCount
+ * @return
+ */
+static bool invoke(ObjectString *name, int argCount) {
+    Value receiver = peek(argCount);
+    if (!IS_INSTANCE(receiver)) {
+        runtimeError("Only instances have methods.");
+        return false;
+    }
+    ObjectInstance *instance = AS_INSTANCE(receiver);
+    Value value;
+    if (tableGet(&instance->fields, name, &value)) {
+        vm.stackTop[-argCount - 1] = value;
+        return callValue(value, argCount);
+    }
+    return invokeFromClass(instance->klass, name, argCount);
 }
 
 /**
@@ -329,6 +412,10 @@ static InterpretResult run() {
                     push(value);
                     break;
                 }
+                // 方法
+                if (bindMethod(instance->klass, name)) {
+                    break;
+                }
                 runtimeError("Undefined property '%s'.", name->chars);
                 return INTERPRET_RUNTIME_ERROR;
             }
@@ -421,6 +508,15 @@ static InterpretResult run() {
                 frame->ip -= offset;
                 break;
             }
+            case OP_INVOKE: {
+                ObjectString *method = READ_STRING();
+                int argCount = READ_BYTE();
+                if (!invoke(method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
             case OP_CALL: {
                 int argCount = READ_BYTE();
                 if (!callValue(peek(argCount), argCount)) {
@@ -452,6 +548,9 @@ static InterpretResult run() {
                 break;
             case OP_CLASS:
                 push(OBJECT_VAL(newClass(READ_STRING())));
+                break;
+            case OP_METHOD:
+                defineMethod(READ_STRING());
                 break;
         }
     }
@@ -489,12 +588,16 @@ void initVM() {
 
     initTable(&vm.strings);
     initTable(&vm.globals);
+
+    vm.initString = copyString("init", 4);
+
     defineNative("clock", clockNative);
 }
 
 void freeVM() {
     freeTable(&vm.strings);
     freeTable(&vm.globals);
+    vm.initString = NULL;
     freeObjects();
 }
 
@@ -568,6 +671,9 @@ void markRoots() {
     markTable(&vm.globals);
     // 编译器：函数
     markCompilerRoots();
+
+    // 驻留
+    markObject((Object *) vm.initString);
 }
 
 void addGray(Object *object) {
