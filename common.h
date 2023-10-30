@@ -15,4 +15,6 @@
 
 #define DEBUG_LOG_GC
 
+#define NAN_BOXING
+
 #endif //CLOX_COMMON_H
